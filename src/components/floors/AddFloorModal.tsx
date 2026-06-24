@@ -1,0 +1,140 @@
+"use client";
+
+import { useState, useTransition } from "react";
+
+import { createFloorAction } from "@/features/floors/actions";
+import { useLiveRefresh } from "@/hooks/use-live-refresh";
+import { useToast } from "@/hooks/use-toast";
+import { SubmitButton } from "@/components/loading/SubmitButton";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import type { FloorFormValues } from "@/types/floor";
+
+type AddFloorModalProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  nextDisplayOrder: number;
+  onSuccess?: () => void;
+};
+
+const initial = (displayOrder: number): FloorFormValues => ({
+  name: "",
+  displayOrder,
+  description: "",
+});
+
+export function AddFloorModal({
+  open,
+  onOpenChange,
+  nextDisplayOrder,
+  onSuccess,
+}: AddFloorModalProps) {
+  const toast = useToast();
+  const refresh = useLiveRefresh();
+  const [values, setValues] = useState(initial(nextDisplayOrder));
+  const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
+  const [submitError, setSubmitError] = useState("");
+  const [isPending, startTransition] = useTransition();
+
+  function handleClose(next: boolean) {
+    if (!next) {
+      setValues(initial(nextDisplayOrder));
+      setErrors({});
+      setSubmitError("");
+    }
+    onOpenChange(next);
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const next: Partial<Record<string, string>> = {};
+    if (!values.name.trim()) next.name = "Name is required";
+    if (values.displayOrder < 1) next.displayOrder = "Display order must be at least 1";
+    setErrors(next);
+    if (Object.keys(next).length > 0) return;
+
+    setSubmitError("");
+    startTransition(async () => {
+      const result = await createFloorAction(values);
+      if (!result.success) {
+        setSubmitError(result.error);
+        toast.error(result.error);
+        return;
+      }
+      handleClose(false);
+      toast.celebrate("Floor Saved", `"${values.name}" added.`);
+      refresh();
+      onSuccess?.();
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add Floor</DialogTitle>
+          <DialogDescription>
+            Define a floor, wing, or building section for room assignment.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {submitError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {submitError}
+            </p>
+          ) : null}
+          <div className="space-y-2">
+            <Label htmlFor="add-floor-name">Name</Label>
+            <Input
+              id="add-floor-name"
+              value={values.name}
+              onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
+            />
+            {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="add-floor-order">Display Order</Label>
+            <Input
+              id="add-floor-order"
+              type="number"
+              min={1}
+              value={values.displayOrder}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, displayOrder: Number(e.target.value) }))
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="add-floor-description">Description</Label>
+            <Textarea
+              id="add-floor-description"
+              value={values.description}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, description: e.target.value }))
+              }
+              rows={3}
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
+              Cancel
+            </Button>
+            <SubmitButton loading={isPending} loadingLabel="Saving…">
+              Add Floor
+            </SubmitButton>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
