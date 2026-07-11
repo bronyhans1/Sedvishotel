@@ -21,6 +21,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function PaymentDetailsPage({ params }: Props) {
   const { id } = await params;
-  const { payment, access } = await loadPaymentDetail(id);
-  return <PaymentDetailsContent payment={payment} access={access} />;
+  const { payment, access, receiptBranding, printHistory } = await loadPaymentDetail(id);
+  return (
+    <PaymentDetailsContent
+      payment={payment}
+      access={access}
+      receiptBranding={receiptBranding}
+      printHistory={printHistory}
+    />
+  );
 }

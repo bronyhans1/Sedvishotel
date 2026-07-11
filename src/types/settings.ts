@@ -24,6 +24,7 @@ export type HotelSettings = {
   lateCheckoutHourFee4To6: number;
   currency: string;
   currencySymbol: string;
+  currencyPosition: "before" | "after";
   timeZone: string;
   taxRate: number;
   serviceCharge: number;

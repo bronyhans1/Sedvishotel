@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { FileText } from "lucide-react";
 
+import { InvoiceDocumentActions } from "@/components/invoices/InvoiceDocumentActions";
+import { PaymentReceiptActions } from "@/components/payments/PaymentReceiptActions";
 import { PaymentChargeSummary } from "@/components/payments/PaymentChargeSummary";
 import { PaymentTaxSection } from "@/components/payments/PaymentTaxSection";
 import { completeCheckOutAction } from "@/features/check-out/actions";
+import { loadReservationFinanceContextAction } from "@/features/documents/actions";
 import { useLiveRefresh } from "@/hooks/use-live-refresh";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -28,6 +30,7 @@ import {
   roundCurrency,
 } from "@/lib/payments/currency";
 import { buildSettlementFromReservation } from "@/lib/payments/payment-settlement";
+import type { ReservationFinanceContext } from "@/lib/documents/load-reservation-finance-context";
 import { computeTransactionVatFields } from "@/lib/payments/vat";
 import { getReservationChargeBase } from "@/lib/payments/payment-settlement";
 import {
@@ -66,6 +69,7 @@ export function CheckOutModal({
   const toast = useToast();
   const refresh = useLiveRefresh();
   const [error, setError] = useState("");
+  const [finance, setFinance] = useState<ReservationFinanceContext | null>(null);
   const [isPending, startTransition] = useTransition();
   const [vatApplied, setVatApplied] = useState(defaultVatApplied);
   const [vatExemptionReason, setVatExemptionReason] = useState<
@@ -87,6 +91,24 @@ export function CheckOutModal({
     setPaymentAmount(0);
     setError("");
   }, [open, reservation?.id, defaultVatApplied]);
+
+  useEffect(() => {
+    if (!open || !reservation?.id) {
+      setFinance(null);
+      return;
+    }
+
+    let cancelled = false;
+    void loadReservationFinanceContextAction(reservation.id).then((result) => {
+      if (!cancelled && result.success) {
+        setFinance(result.data);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, reservation?.id]);
 
   const settlement = useMemo(() => {
     if (!reservation) return null;
@@ -316,14 +338,30 @@ export function CheckOutModal({
           </div>
         ) : null}
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" disabled>
-            <FileText className="h-4 w-4" />
-            Generate Invoice
-          </Button>
+        <DialogFooter className="flex-col items-stretch gap-3 sm:flex-col">
+          {finance ? (
+            <div className="flex flex-wrap gap-2">
+              <InvoiceDocumentActions
+                reservationId={reservation?.id ?? ""}
+                guestId={reservation?.guestId}
+                invoice={finance.invoice}
+                access={finance.invoiceAccess}
+                compact
+              />
+              {finance.payment ? (
+                <PaymentReceiptActions
+                  payment={finance.payment}
+                  receiptBranding={finance.receiptBranding}
+                  size="sm"
+                />
+              ) : null}
+            </div>
+          ) : null}
+          <div className="flex justify-end gap-2">
           <Button onClick={handleCheckOut} disabled={isPending}>
             {isPending ? "Processing…" : "Complete Check-Out"}
           </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

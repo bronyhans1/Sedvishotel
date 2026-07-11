@@ -12,6 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { saveSettingsAction, uploadBrandingAssetAction } from "@/features/settings/actions";
+import {
+  DocumentNumberPreviewPanel,
+  DocumentSequenceManager,
+} from "@/features/settings/components/DocumentSequencePanel";
 import { useToast } from "@/hooks/use-toast";
 import type { SettingsAccess } from "@/lib/auth/settings-access";
 import { applyBrandingCss } from "@/lib/branding/apply-css";
@@ -46,9 +50,11 @@ function ToggleRow({
 export function SettingsPageContent({
   settings: initialSettings,
   access,
+  isAdmin,
 }: {
   settings: HotelSettings;
   access: SettingsAccess;
+  isAdmin: boolean;
 }) {
   const toast = useToast();
   const { setTheme } = useTheme();
@@ -380,6 +386,22 @@ export function SettingsPageContent({
               <Input value={settings.currencySymbol} onChange={(e) => set("currencySymbol", e.target.value)} />
             </div>
             <div className="space-y-2">
+              <Label>Currency Position</Label>
+              <select
+                className={selectClass}
+                value={settings.currencyPosition}
+                onChange={(e) =>
+                  set(
+                    "currencyPosition",
+                    e.target.value === "after" ? "after" : "before"
+                  )
+                }
+              >
+                <option value="before">Before amount ({settings.currencySymbol} 100.00)</option>
+                <option value="after">After amount (100.00 {settings.currencySymbol})</option>
+              </select>
+            </div>
+            <div className="space-y-2">
               <Label>Currency Code</Label>
               <Input value={settings.currency} onChange={(e) => set("currency", e.target.value)} />
             </div>
@@ -417,6 +439,9 @@ export function SettingsPageContent({
             </div>
             <ToggleRow label="Auto Generate Invoice Number" checked={settings.autoGenerateInvoiceNumber} onChange={(v) => set("autoGenerateInvoiceNumber", v)} />
             <div className="space-y-2 sm:col-span-2">
+              <DocumentNumberPreviewPanel settings={settings} />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
               <Label>Footer Note</Label>
               <Textarea value={settings.invoiceFooter} onChange={(e) => set("invoiceFooter", e.target.value)} rows={2} />
             </div>
@@ -451,8 +476,22 @@ export function SettingsPageContent({
             <ToggleRow label="Show Hotel Logo" checked={settings.showHotelLogo} onChange={(v) => set("showHotelLogo", v)} />
             <ToggleRow label="Show QR Code" checked={settings.showQrCode} onChange={(v) => set("showQrCode", v)} />
             <ToggleRow label="Print Thank You Message" checked={settings.printThankYouMessage} onChange={(v) => set("printThankYouMessage", v)} />
+            <div className="space-y-2 sm:col-span-2">
+              <DocumentNumberPreviewPanel settings={settings} />
+            </div>
           </CardContent>
         </Card>
+
+        {isAdmin ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Document Sequence Management</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DocumentSequenceManager isAdmin={isAdmin} />
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardHeader>

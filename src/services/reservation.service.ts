@@ -1946,8 +1946,7 @@ export class ReservationService implements IReservationService {
       options[0]?.roomNumber ||
       row.room.room_number;
     const newRoom = await this.resolveRoom(selected);
-    const { numberOfNights, subtotal, taxes, serviceCharge, totalAmount } =
-      this.computeFinancials(
+    const { totalAmount } = this.computeFinancials(
         Number(newRoom.room_type.default_price),
         row.check_in_date,
         row.check_out_date,

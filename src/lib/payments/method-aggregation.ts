@@ -1,5 +1,5 @@
 import { PAYMENT_METHOD_LABELS } from "@/lib/analytics/payment-labels";
-import type { DbPaymentMethod, DbPaymentTransaction } from "@/types/database";
+import type { DbPaymentTransaction } from "@/types/database";
 import type { PaymentMethod, TransactionPaymentMethod } from "@/types/payment";
 
 type MethodCarrier = Pick<DbPaymentTransaction, "method" | "amount">;

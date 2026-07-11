@@ -20,6 +20,8 @@ import {
 import { useRouter } from "next/navigation";
 
 import { EarlyCheckOutModal } from "@/components/check-out/EarlyCheckOutModal";
+import { InvoiceDocumentActions } from "@/components/invoices/InvoiceDocumentActions";
+import { PaymentReceiptActions } from "@/components/payments/PaymentReceiptActions";
 import { LateCheckOutModal } from "@/components/check-out/LateCheckOutModal";
 import { ExtendStayModal } from "@/components/stays/ExtendStayModal";
 import { MoveRoomModal } from "@/components/stays/MoveRoomModal";
@@ -43,6 +45,7 @@ import { buildReservationTimeline } from "@/lib/reservations/mapper";
 import { formatTaxSummaryLabel } from "@/lib/reservations/pricing";
 import { formatCurrency, nightsBetween } from "@/lib/utils";
 import { BOOKING_SOURCE_OPTIONS, type Reservation } from "@/types/reservation";
+import type { ReservationFinanceContext } from "@/lib/documents/load-reservation-finance-context";
 import type { CheckoutPolicy } from "@/types/late-checkout";
 
 const sourceLabels = Object.fromEntries(
@@ -79,6 +82,7 @@ type Props = {
   checkoutAccess: CheckOutAccess;
   checkoutPolicy: CheckoutPolicy;
   roomTypeOptions: ReservationRoomTypeOption[];
+  finance: ReservationFinanceContext;
 };
 
 function formatLateCheckoutTime(iso: string | null): string {
@@ -98,6 +102,7 @@ export function ReservationDetailsContent({
   checkoutAccess,
   checkoutPolicy,
   roomTypeOptions,
+  finance,
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -570,6 +575,20 @@ export function ReservationDetailsContent({
                 {formatCurrency(reservation.balance)}
               </span>
             </div>
+            <Separator />
+            <InvoiceDocumentActions
+              reservationId={reservation.id}
+              guestId={reservation.guestId}
+              invoice={finance.invoice}
+              access={finance.invoiceAccess}
+            />
+            {finance.payment ? (
+              <PaymentReceiptActions
+                payment={finance.payment}
+                receiptBranding={finance.receiptBranding}
+                showViewLink
+              />
+            ) : null}
           </CardContent>
         </Card>
       </div>

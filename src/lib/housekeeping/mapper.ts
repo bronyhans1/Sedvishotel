@@ -1,6 +1,5 @@
 import { resolveFloorLabel } from "@/lib/rooms/mapper";
 import type {
-  DbHousekeepingStatus,
   DbHousekeepingTask,
   DbRoomWithType,
 } from "@/types/database";

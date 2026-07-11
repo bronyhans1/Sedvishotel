@@ -60,6 +60,10 @@ export function mapDbSettingsToHotelSettings(row: DbHotelSettings): HotelSetting
     lateCheckoutHourFee4To6: Number(row.late_checkout_hour_fee_4_6 ?? 150),
     currency: row.currency,
     currencySymbol: readJsonString(json, "currencySymbol", "GH₵"),
+    currencyPosition:
+      readJsonString(json, "currencyPosition", "before") === "after"
+        ? "after"
+        : "before",
     timeZone: row.timezone,
     taxRate: row.tax_rate,
     serviceCharge: row.service_charge,
@@ -134,6 +138,7 @@ export function mapHotelSettingsToDbUpdate(
       theme: settings.theme,
       faviconUrl: settings.faviconUrl || null,
       currencySymbol: settings.currencySymbol,
+      currencyPosition: settings.currencyPosition,
       registrationNumber: settings.registrationNumber || null,
       invoiceStartingNumber: settings.invoiceStartingNumber,
       invoiceDueDays: settings.invoiceDueDays,

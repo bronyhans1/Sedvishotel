@@ -1,7 +1,7 @@
 import { getWalkInAccess } from "@/lib/auth/walk-in-access";
 import { computeVatOnBase, computeInvoiceTotal } from "@/lib/payments/payment-settlement";
 import { buildProgrammaticPaymentIdempotencyKey } from "@/lib/payments/atomic-commit";
-import { resolvePaymentTransactionVat } from "@/lib/payments/resolve-vat";
+import { resolvePaymentTransactionVat, toPaymentTransactionVatFields } from "@/lib/payments/resolve-vat";
 import { resolvePaymentStatusFromTotals } from "@/lib/payments/totals";
 import { roundCurrency } from "@/lib/payments/currency";
 import { normalizeRoomNumber } from "@/lib/rooms/floor-layout";
@@ -412,8 +412,7 @@ export class WalkInService implements IWalkInService {
         chargeBase,
         now
       );
-      const { vatOverridden: _vatOverridden, ...transactionVatFields } =
-        vatResolution;
+      const transactionVatFields = toPaymentTransactionVatFields(vatResolution);
 
       const commitResult = await this.payments.commitPaymentAtomically({
         idempotencyKey: buildProgrammaticPaymentIdempotencyKey(

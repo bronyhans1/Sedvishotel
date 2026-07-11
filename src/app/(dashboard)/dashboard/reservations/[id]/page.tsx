@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ReservationDetailsPage({ params }: Props) {
   const { id } = await params;
-  const { reservation, access, checkoutAccess, roomTypeOptions, checkoutPolicy } =
+  const { reservation, access, checkoutAccess, roomTypeOptions, checkoutPolicy, finance } =
     await loadReservationDetail(id);
   return (
     <ReservationDetailsContent
@@ -30,6 +30,7 @@ export default async function ReservationDetailsPage({ params }: Props) {
       checkoutAccess={checkoutAccess}
       roomTypeOptions={roomTypeOptions}
       checkoutPolicy={checkoutPolicy}
+      finance={finance}
     />
   );
 }

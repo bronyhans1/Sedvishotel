@@ -93,6 +93,9 @@ function mapTimelineEntry(
     vatExemptionReason: row.vat_exemption_reason ?? undefined,
     vatExemptionNotes: row.vat_exemption_notes ?? undefined,
     printCount: row.print_count ?? 0,
+    printedAt: row.printed_at ?? null,
+    printedBy: row.printed_by ?? null,
+    lastPrintedAt: row.last_printed_at ?? null,
   };
 }
 

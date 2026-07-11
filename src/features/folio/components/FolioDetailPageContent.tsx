@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 
+import { InvoiceDocumentActions } from "@/components/invoices/InvoiceDocumentActions";
+import { PaymentReceiptActions } from "@/components/payments/PaymentReceiptActions";
 import { SubmitButton } from "@/components/loading/SubmitButton";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { Badge } from "@/components/ui/badge";
@@ -25,17 +27,20 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { formatFolioSourceLabel } from "@/lib/folio/balance";
 import { formatCurrency } from "@/lib/utils";
+import type { ReservationFinanceContext } from "@/lib/documents/load-reservation-finance-context";
 import type { GuestFolioAccess } from "@/lib/auth/guest-folio-access.types";
 import { FOLIO_ENTRY_TYPE_LABELS, type GuestFolio } from "@/types/folio";
 
 type FolioDetailPageContentProps = {
   folio: GuestFolio;
   access: GuestFolioAccess;
+  finance: ReservationFinanceContext;
 };
 
 export function FolioDetailPageContent({
   folio,
   access,
+  finance,
 }: FolioDetailPageContentProps) {
   const toast = useToast();
   const [chargeOpen, setChargeOpen] = useState(false);
@@ -233,6 +238,24 @@ export function FolioDetailPageContent({
               <span>Outstanding</span>
               <span>{formatCurrency(folio.outstandingBalance)}</span>
             </div>
+          </div>
+          <div className="space-y-2 border-t pt-3">
+            <h3 className="text-sm font-semibold">Documents</h3>
+            <InvoiceDocumentActions
+              reservationId={folio.reservationId}
+              guestId={folio.guestId}
+              folioId={folio.id}
+              invoice={finance.invoice}
+              access={finance.invoiceAccess}
+              compact
+            />
+            {finance.payment ? (
+              <PaymentReceiptActions
+                payment={finance.payment}
+                receiptBranding={finance.receiptBranding}
+                showViewLink
+              />
+            ) : null}
           </div>
         </div>
       </div>

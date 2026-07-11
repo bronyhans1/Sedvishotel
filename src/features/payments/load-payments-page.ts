@@ -9,6 +9,7 @@ import { getGuestFolioService } from "@/lib/folio/get-guest-folio-service";
 import { getGuestService } from "@/lib/guests/get-guest-service";
 import { computePaymentStats } from "@/lib/payments/stats";
 import { roundCurrency } from "@/lib/payments/currency";
+import { loadHotelDocumentSettings } from "@/lib/documents/load-document-settings";
 import { getPaymentService } from "@/lib/payments/get-payment-service";
 import { getReservationService } from "@/lib/reservations/get-reservation-service";
 import { getDefaultTaxRate, isGlobalVatEnabled } from "@/lib/settings/get-tax-rate";
@@ -49,12 +50,14 @@ export async function loadPaymentsPageData() {
   const guestService = await getGuestService();
   const reservationService = await getReservationService();
 
-  const [payments, guests, reservations, folioService] = await Promise.all([
-    paymentService.getAll(ctx, session),
-    guestService.listGuests(ctx, session),
-    reservationService.listReservations(ctx, session),
-    getGuestFolioService(),
-  ]);
+  const [payments, guests, reservations, folioService, documentSettings] =
+    await Promise.all([
+      paymentService.getAll(ctx, session),
+      guestService.listGuests(ctx, session),
+      reservationService.listReservations(ctx, session),
+      getGuestFolioService(),
+      loadHotelDocumentSettings(ctx, session),
+    ]);
 
   const recordableReservations = reservations.filter(
     (r) => r.status !== "cancelled"
@@ -94,5 +97,11 @@ export async function loadPaymentsPageData() {
     defaultVatApplied: isGlobalVatEnabled(defaultTaxRate),
   };
 
-  return { payments, stats, access, recordOptions };
+  return {
+    payments,
+    stats,
+    access,
+    recordOptions,
+    receiptBranding: documentSettings.receiptBranding,
+  };
 }

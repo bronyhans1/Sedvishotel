@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { recordPaymentAction } from "@/features/payments/actions";
+import { logReceiptPrintAction, recordPaymentAction } from "@/features/payments/actions";
 import type { PartialPaymentContext } from "@/features/payments/load-payments-page";
 import { useLiveRefresh } from "@/hooks/use-live-refresh";
 import { useToast } from "@/hooks/use-toast";
@@ -39,7 +39,8 @@ import {
   printRoomPaymentReceiptDraft,
 } from "@/lib/payments/room-payment-receipt-draft";
 import { computeTransactionVatFields } from "@/lib/payments/vat";
-import { hotelContact } from "@/config/hotel-contact";
+import { buildReceiptBrandingFromPartial } from "@/lib/receipt/build-receipt-branding";
+import type { ReceiptBranding } from "@/lib/receipt/receipt-core";
 import { formatCurrency } from "@/lib/utils";
 import {
   PAYMENT_METHOD_OPTIONS,
@@ -59,6 +60,7 @@ type Props = {
   defaultTaxRate: number;
   defaultVatApplied: boolean;
   canOverrideVat: boolean;
+  receiptBranding: ReceiptBranding;
 };
 
 function buildInitial(defaultVatApplied: boolean): PaymentFormValues {
@@ -173,10 +175,23 @@ export function RecordPaymentModal({
   defaultTaxRate,
   defaultVatApplied,
   canOverrideVat,
+  receiptBranding,
 }: Props) {
   const toast = useToast();
   const refresh = useLiveRefresh();
   const branding = useBranding();
+  const mergedReceiptBranding = useMemo(
+    () =>
+      buildReceiptBrandingFromPartial(
+        {
+          hotelName: branding?.hotelName,
+          logoUrl: branding?.logoUrl,
+          primaryColor: branding?.primaryColor,
+        },
+        receiptBranding
+      ),
+    [branding, receiptBranding]
+  );
   const [guestFilterId, setGuestFilterId] = useState("");
   const [values, setValues] = useState(() => buildInitial(defaultVatApplied));
   const [splitRows, setSplitRows] = useState<SplitPaymentRow[]>([
@@ -186,6 +201,9 @@ export function RecordPaymentModal({
   const [pendingReceipt, setPendingReceipt] = useState<ReturnType<
     typeof buildRoomPaymentReceiptDraft
   > | null>(null);
+  const [pendingTransactionId, setPendingTransactionId] = useState<
+    string | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const idempotencyKeyRef = useRef<string>("");
@@ -255,6 +273,7 @@ export function RecordPaymentModal({
       { method: "mobile_money", amount: 0 },
     ]);
     setPendingReceipt(null);
+    setPendingTransactionId(null);
     setError(null);
   }
 
@@ -322,14 +341,7 @@ export function RecordPaymentModal({
   }
 
   function buildReceiptBranding() {
-    return {
-      hotelName: branding?.hotelName,
-      logoUrl: branding?.logoUrl,
-      primaryColor: branding?.primaryColor,
-      address: hotelContact.address,
-      phone: hotelContact.phoneDisplay,
-      thankYouMessage: "Thank you for staying with us!",
-    };
+    return mergedReceiptBranding;
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -414,6 +426,7 @@ export function RecordPaymentModal({
           }
         );
         setPendingReceipt(receipt);
+        setPendingTransactionId(result.transactionId ?? null);
         if (continuingPayment) {
           toast.celebrate(
             "Payment Continued",
@@ -430,9 +443,20 @@ export function RecordPaymentModal({
     });
   }
 
-  function finishAfterReceipt(print: boolean) {
+  async function finishAfterReceipt(print: boolean) {
     if (print && pendingReceipt) {
-      printRoomPaymentReceiptDraft(pendingReceipt, buildReceiptBranding());
+      let printCount = 1;
+      if (pendingTransactionId) {
+        const result = await logReceiptPrintAction(pendingTransactionId);
+        if (result.success) {
+          printCount = result.printCount;
+        }
+      }
+      printRoomPaymentReceiptDraft(
+        pendingReceipt,
+        buildReceiptBranding(),
+        printCount
+      );
     }
     handleClose(false);
   }

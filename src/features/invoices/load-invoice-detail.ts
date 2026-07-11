@@ -4,8 +4,9 @@ import { ACCESS_DENIED_PATH } from "@/lib/auth/route-guard";
 
 import { getInvoiceAccess } from "@/lib/auth/invoice-access";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
+import { loadHotelDocumentSettings } from "@/lib/documents/load-document-settings";
 import { getInvoiceService } from "@/lib/invoices/get-invoice-service";
-import { getSettingsService } from "@/lib/settings/get-settings-service";
+import { getPaymentService } from "@/lib/payments/get-payment-service";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export async function loadInvoiceDetail(id: string) {
@@ -20,28 +21,25 @@ export async function loadInvoiceDetail(id: string) {
     redirect(ACCESS_DENIED_PATH);
   }
 
-  const service = await getInvoiceService();
-  const invoice = await service.getById(ctx, session, id);
+  const invoiceService = await getInvoiceService();
+  const paymentService = await getPaymentService();
+  const invoice = await invoiceService.getById(ctx, session, id);
 
   if (!invoice) {
     notFound();
   }
 
-  const settingsService = await getSettingsService();
-  const hotelSettings = await settingsService.getHotelSettings(ctx, session);
+  const [{ invoiceDocumentSettings, receiptBranding }, payment] =
+    await Promise.all([
+      loadHotelDocumentSettings(ctx, session),
+      paymentService.getByReservationId(ctx, session, invoice.reservationId),
+    ]);
 
   return {
     invoice,
     access,
-    documentSettings: {
-      address: hotelSettings.address,
-      phone: hotelSettings.phone,
-      email: hotelSettings.email,
-      website: hotelSettings.website,
-      tinNumber: hotelSettings.tinNumber,
-      taxRate: hotelSettings.taxRate,
-      invoiceFooter: hotelSettings.invoiceFooter,
-      termsAndConditions: hotelSettings.termsAndConditions,
-    },
+    documentSettings: invoiceDocumentSettings,
+    payment,
+    receiptBranding,
   };
 }

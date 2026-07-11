@@ -39,6 +39,7 @@ export interface IActivityLogRepository {
     pagination?: PaginationParams
   ): Promise<PaginatedResult<DbActivityLog>>;
   findByEntityId(entityId: string, module?: string): Promise<DbActivityLog[]>;
+  findReceiptPrintEvents(paymentId: string): Promise<DbActivityLog[]>;
   findRecent(limit?: number): Promise<DbActivityLog[]>;
   logReservationEvent(
     input: CreateActivityLogInput & { reservationId: string }

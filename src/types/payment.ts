@@ -34,6 +34,9 @@ export type PaymentTimelineEntry = {
   vatExemptionReason?: string;
   vatExemptionNotes?: string;
   printCount?: number;
+  printedAt?: string | null;
+  printedBy?: string | null;
+  lastPrintedAt?: string | null;
 };
 
 export type Payment = {

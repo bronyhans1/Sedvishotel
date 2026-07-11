@@ -13,6 +13,7 @@ export type PaymentActionResult =
   | {
       success: true;
       paymentId: string;
+      transactionId?: string;
       receiptNumber?: string | null;
       balanceAfter: number;
     }
@@ -37,6 +38,7 @@ export async function recordPaymentAction(
     return {
       success: true,
       paymentId: payment.id,
+      transactionId: latestPayment?.id,
       receiptNumber: latestPayment?.receiptNumber,
       balanceAfter: payment.balance,
     };

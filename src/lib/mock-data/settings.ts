@@ -25,6 +25,7 @@ export const defaultHotelSettings: HotelSettings = {
   lateCheckoutHourFee4To6: 150,
   currency: "GHS",
   currencySymbol: "GH₵",
+  currencyPosition: "before",
   timeZone: "Africa/Accra",
   taxRate: 15,
   serviceCharge: 5,

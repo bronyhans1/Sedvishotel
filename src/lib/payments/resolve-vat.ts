@@ -91,4 +91,32 @@ export function resolvePaymentTransactionVat(
   };
 }
 
+export type PaymentTransactionVatResolution = ReturnType<
+  typeof resolvePaymentTransactionVat
+>;
+
+/** Strips the internal `vatOverridden` flag before persisting a transaction row. */
+export function toPaymentTransactionVatFields(
+  resolution: PaymentTransactionVatResolution
+): Pick<
+  CreatePaymentTransactionInput,
+  | "vat_applied"
+  | "vat_rate"
+  | "vat_amount"
+  | "vat_exemption_reason"
+  | "vat_exemption_notes"
+  | "vat_overridden_by"
+  | "vat_overridden_at"
+> {
+  return {
+    vat_applied: resolution.vat_applied,
+    vat_rate: resolution.vat_rate,
+    vat_amount: resolution.vat_amount,
+    vat_exemption_reason: resolution.vat_exemption_reason,
+    vat_exemption_notes: resolution.vat_exemption_notes,
+    vat_overridden_by: resolution.vat_overridden_by,
+    vat_overridden_at: resolution.vat_overridden_at,
+  };
+}
+
 export { getReservationChargeBase };

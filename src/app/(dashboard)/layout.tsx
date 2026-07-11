@@ -3,7 +3,10 @@ import { redirect } from "next/navigation";
 import { authDebug } from "@/lib/auth/debug-log";
 import { getCurrentUser, type CurrentUser } from "@/lib/auth/current-user";
 import { loadBranding } from "@/lib/branding/load-branding";
+import { getCurrencyConfig } from "@/lib/currency/get-currency-config";
+import { setRuntimeCurrencyConfig } from "@/lib/currency/format";
 import { BrandingProvider } from "@/components/branding/BrandingProvider";
+import { CurrencyProvider } from "@/components/currency/CurrencyProvider";
 import { FaviconLink } from "@/components/branding/FaviconLink";
 import { DashboardShell } from "@/components/loading/DashboardShell";
 import { Navbar } from "@/components/layout/Navbar";
@@ -46,10 +49,13 @@ export default async function DashboardLayout({
   }
 
   const branding = await loadBranding();
+  const currencyConfig = await getCurrencyConfig();
+  setRuntimeCurrencyConfig(currencyConfig);
   const notifications = currentUser ? await loadNavbarNotifications() : [];
 
   return (
     <BrandingProvider branding={branding}>
+      <CurrencyProvider config={currencyConfig}>
       <FaviconLink />
       <div className="flex min-h-screen">
       <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-64">
@@ -65,6 +71,7 @@ export default async function DashboardLayout({
         </main>
       </div>
     </div>
+    </CurrencyProvider>
     </BrandingProvider>
   );
 }

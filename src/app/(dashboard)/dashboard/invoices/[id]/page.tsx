@@ -22,9 +22,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 async function InvoiceDetailsLoader({ id }: { id: string }) {
-  const { invoice, documentSettings } = await loadInvoiceDetail(id);
+  const { invoice, documentSettings, payment, receiptBranding } =
+    await loadInvoiceDetail(id);
   return (
-    <InvoiceDetailsContent invoice={invoice} documentSettings={documentSettings} />
+    <InvoiceDetailsContent
+      invoice={invoice}
+      documentSettings={documentSettings}
+      payment={payment}
+      receiptBranding={receiptBranding}
+    />
   );
 }
 

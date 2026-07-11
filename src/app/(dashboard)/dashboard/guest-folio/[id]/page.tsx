@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 };
 
 async function FolioDetailLoader({ folioId }: { folioId: string }) {
-  const { folio, access } = await loadFolioDetailPageData(folioId);
-  return <FolioDetailPageContent folio={folio} access={access} />;
+  const { folio, access, finance } = await loadFolioDetailPageData(folioId);
+  return <FolioDetailPageContent folio={folio} access={access} finance={finance} />;
 }
 
 export default async function GuestFolioDetailPage({

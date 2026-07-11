@@ -1,17 +1,15 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+import { formatMoney } from "@/lib/currency/format";
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Ghana Cedi display — e.g. GH₵ 1,375.00 */
+/** Settings-driven currency display — uses runtime config from CurrencyProvider on dashboard. */
 export function formatCurrency(amount: number): string {
-  const formatted = new Intl.NumberFormat("en-GH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-  return `GH₵ ${formatted}`;
+  return formatMoney(amount);
 }
 
 /** @deprecated Use formatCurrency */

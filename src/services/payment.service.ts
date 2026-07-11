@@ -19,6 +19,11 @@ import {
   computeTransactionTotals,
   resolvePaymentStatusFromTotals,
 } from "@/lib/payments/totals";
+import {
+  buildReceiptPrintHistory,
+  buildReceiptPrintHistoryForTransaction,
+  type ReceiptPrintHistoryEntry,
+} from "@/lib/payments/receipt-print-history";
 import { resolveOutstandingForPayment } from "@/lib/payments/outstanding";
 import {
   PaymentAtomicError,
@@ -28,7 +33,7 @@ import type { IInvoiceRepository } from "@/repositories/invoice.repository";
 import type { IPaymentRepository } from "@/repositories/payment.repository";
 import type { IReservationRepository } from "@/repositories/reservation.repository";
 import type { ISettingsRepository } from "@/repositories/settings.repository";
-import { resolvePaymentTransactionVat, resolveEffectiveTotalDue } from "@/lib/payments/resolve-vat";
+import { resolvePaymentTransactionVat, resolveEffectiveTotalDue, toPaymentTransactionVatFields } from "@/lib/payments/resolve-vat";
 import type { AuthSession } from "@/services/auth.service";
 import { ServiceError } from "@/services/types";
 import type { ServiceContext } from "@/services/types";
@@ -49,6 +54,19 @@ export interface IPaymentService {
     session: AuthSession,
     paymentId: string
   ): Promise<Payment | null>;
+  getByReservationId(
+    ctx: ServiceContext,
+    session: AuthSession,
+    reservationId: string
+  ): Promise<Payment | null>;
+  getReceiptPrintHistory(
+    ctx: ServiceContext,
+    session: AuthSession,
+    paymentId: string
+  ): Promise<{
+    all: ReceiptPrintHistoryEntry[];
+    byTransaction: Record<string, ReceiptPrintHistoryEntry[]>;
+  }>;
   create(
     ctx: ServiceContext,
     session: AuthSession,
@@ -206,6 +224,46 @@ export class PaymentService implements IPaymentService {
     return mapDbPaymentToPayment(row, transactions);
   }
 
+  async getByReservationId(
+    _ctx: ServiceContext,
+    session: AuthSession,
+    reservationId: string
+  ): Promise<Payment | null> {
+    this.require(session, "view");
+    const row = await this.payments.getByReservationId(reservationId);
+    if (!row) return null;
+    const transactions = await this.payments.getTransactions(row.id);
+    return mapDbPaymentToPayment(row, transactions);
+  }
+
+  async getReceiptPrintHistory(
+    _ctx: ServiceContext,
+    session: AuthSession,
+    paymentId: string
+  ): Promise<{
+    all: ReceiptPrintHistoryEntry[];
+    byTransaction: Record<string, ReceiptPrintHistoryEntry[]>;
+  }> {
+    this.require(session, "view");
+    const logs = await this.activityLogs.findReceiptPrintEvents(paymentId);
+    const all = buildReceiptPrintHistory(logs);
+    const byTransaction: Record<string, ReceiptPrintHistoryEntry[]> = {};
+
+    for (const entry of logs) {
+      const transactionId =
+        typeof entry.metadata.transaction_id === "string"
+          ? entry.metadata.transaction_id
+          : null;
+      if (!transactionId) continue;
+      byTransaction[transactionId] = buildReceiptPrintHistoryForTransaction(
+        logs,
+        transactionId
+      );
+    }
+
+    return { all, byTransaction };
+  }
+
   async create(
     ctx: ServiceContext,
     session: AuthSession,
@@ -259,7 +317,7 @@ export class PaymentService implements IPaymentService {
       chargeBase,
       now
     );
-    const { vatOverridden, ...transactionVatFields } = vatFields;
+    const transactionVatFields = toPaymentTransactionVatFields(vatFields);
     const transactionDescription =
       values.notes.trim() || "Payment recorded";
 

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ACCESS_DENIED_PATH } from "@/lib/auth/route-guard";
 import { getGuestFolioAccess } from "@/lib/auth/guest-folio-access";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
+import { loadReservationFinanceContext } from "@/lib/documents/load-reservation-finance-context";
 import { getGuestFolioService } from "@/lib/folio/get-guest-folio-service";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -40,5 +41,11 @@ export async function loadFolioDetailPageData(folioId: string) {
     redirect("/dashboard/guest-folio");
   }
 
-  return { folio, access };
+  const finance = await loadReservationFinanceContext(
+    ctx,
+    session,
+    folio.reservationId
+  );
+
+  return { folio, access, finance };
 }

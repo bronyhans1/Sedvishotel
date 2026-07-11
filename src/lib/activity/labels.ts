@@ -1,6 +1,5 @@
 import { ActivityActionCodes } from "@/types/database/enums";
 import {
-  formatDisplayLabel,
   humanizeLabel,
   looksLikeInternalCode,
 } from "@/lib/labels/humanize";

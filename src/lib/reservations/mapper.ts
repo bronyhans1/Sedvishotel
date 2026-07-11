@@ -155,7 +155,7 @@ export function buildReservationTimeline(
       title: "Payment Received",
       description:
         reservation.amountPaid > 0
-          ? `GH₵ ${reservation.amountPaid.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} received`
+          ? `${formatCurrency(reservation.amountPaid)} received`
           : "Awaiting payment",
       timestamp: reservation.amountPaid > 0 ? "Recorded" : "Pending",
       completed: reservation.amountPaid > 0,

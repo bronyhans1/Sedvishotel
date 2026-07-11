@@ -127,6 +127,25 @@ export class SupabaseActivityLogRepository implements IActivityLogRepository {
     return data ?? [];
   }
 
+  async findReceiptPrintEvents(paymentId: string): Promise<DbActivityLog[]> {
+    const { data, error } = await this.client
+      .from("activity_logs")
+      .select("*")
+      .eq("entity_id", paymentId)
+      .eq("module", "payments")
+      .in("action_code", [
+        "payment.receipt_printed",
+        "payment.receipt_reprinted",
+      ])
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      throw new Error(`Failed to load receipt print history: ${error.message}`);
+    }
+
+    return data ?? [];
+  }
+
   async logReservationEvent(): Promise<DbActivityLog> {
     throw new Error("SupabaseActivityLogRepository.logReservationEvent not implemented");
   }

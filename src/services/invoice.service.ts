@@ -20,6 +20,11 @@ export interface IInvoiceService {
     session: AuthSession,
     invoiceId: string
   ): Promise<Invoice | null>;
+  getByReservationId(
+    ctx: ServiceContext,
+    session: AuthSession,
+    reservationId: string
+  ): Promise<Invoice | null>;
   create(
     ctx: ServiceContext,
     session: AuthSession,
@@ -103,6 +108,17 @@ export class InvoiceService implements IInvoiceService {
   ): Promise<Invoice | null> {
     this.require(session, "view");
     const row = await this.invoices.getById(invoiceId);
+    if (!row) return null;
+    return mapDbInvoiceToInvoice(row);
+  }
+
+  async getByReservationId(
+    _ctx: ServiceContext,
+    session: AuthSession,
+    reservationId: string
+  ): Promise<Invoice | null> {
+    this.require(session, "view");
+    const row = await this.invoices.getByReservationId(reservationId);
     if (!row) return null;
     return mapDbInvoiceToInvoice(row);
   }

@@ -22,5 +22,9 @@ export async function loadSettingsPageData() {
   const service = await getSettingsService();
   const settings = await service.getHotelSettings(ctx, session);
 
-  return { settings, access };
+  return {
+    settings,
+    access,
+    isAdmin: session.roleId === "admin",
+  };
 }

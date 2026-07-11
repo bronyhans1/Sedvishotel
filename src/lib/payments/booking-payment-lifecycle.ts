@@ -125,10 +125,15 @@ export function mapBookingLifecycleToPaymentStatus(
 
 export type WalkInSummaryRoomStatus = "none" | "selected" | "occupied";
 
+/**
+ * Walk-In summary room status label.
+ * `wizardStep` is reserved for step-aware occupancy hints (not yet implemented).
+ */
 export function resolveWalkInSummaryRoomStatus(
   roomNumber: string,
-  _wizardStep: number
+  wizardStep: number
 ): { key: WalkInSummaryRoomStatus; label: string } {
+  void wizardStep;
   if (!roomNumber) {
     return { key: "none", label: "—" };
   }

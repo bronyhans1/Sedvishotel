@@ -42,7 +42,8 @@ export function buildRoomPaymentReceiptDraft(
 
 export function printRoomPaymentReceiptDraft(
   data: RoomPaymentReceiptData,
-  branding?: ReceiptBranding
+  branding?: ReceiptBranding,
+  printCount = 1
 ): void {
-  printRoomPaymentReceipt(data, branding);
+  printRoomPaymentReceipt({ ...data, printCount }, branding);
 }

@@ -6,6 +6,7 @@ import { ArrowLeft, Printer, RotateCcw } from "lucide-react";
 
 import { PaymentMethodLabel } from "@/components/payments/PaymentMethodLabel";
 import { PaymentStatusBadge } from "@/components/payments/PaymentStatusBadge";
+import { ReceiptPrintHistoryList } from "@/components/payments/ReceiptPrintHistoryList";
 import { RefundPaymentModal } from "@/components/payments/RefundPaymentModal";
 import { useBranding } from "@/components/branding/BrandingProvider";
 import { Button } from "@/components/ui/button";
@@ -13,29 +14,43 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { logReceiptPrintAction } from "@/features/payments/actions";
 import type { PaymentAccess } from "@/lib/auth/payment-access.types";
 import { buildReceiptBrandingFromPartial } from "@/lib/receipt/build-receipt-branding";
+import type { ReceiptBranding } from "@/lib/receipt/receipt-core";
 import { formatMethodsUsed } from "@/lib/payments/method-aggregation";
 import { printTransactionReceipt } from "@/lib/payments/print-receipt";
 import { formatCurrency } from "@/lib/utils";
+import type { ReceiptPrintHistoryEntry } from "@/lib/payments/receipt-print-history";
 import type { Payment, PaymentTimelineEntry } from "@/types/payment";
 
 type Props = {
   payment: Payment;
   access: PaymentAccess;
+  receiptBranding: ReceiptBranding;
+  printHistory: {
+    all: ReceiptPrintHistoryEntry[];
+    byTransaction: Record<string, ReceiptPrintHistoryEntry[]>;
+  };
 };
 
 function TimelineEntryBlock({
   payment,
   entry,
+  receiptBranding,
+  printHistory = [],
 }: {
   payment: Payment;
   entry: PaymentTimelineEntry;
+  receiptBranding: ReceiptBranding;
+  printHistory?: ReceiptPrintHistoryEntry[];
 }) {
   const branding = useBranding();
-  const receiptBranding = buildReceiptBrandingFromPartial({
-    hotelName: branding?.hotelName,
-    logoUrl: branding?.logoUrl,
-    primaryColor: branding?.primaryColor,
-  });
+  const mergedBranding = buildReceiptBrandingFromPartial(
+    {
+      hotelName: branding?.hotelName,
+      logoUrl: branding?.logoUrl,
+      primaryColor: branding?.primaryColor,
+    },
+    receiptBranding
+  );
   const isRefund = entry.kind === "refund";
   const label = isRefund
     ? `Refund #${entry.sequenceNumber}`
@@ -99,7 +114,7 @@ function TimelineEntryBlock({
             printTransactionReceipt(
               payment,
               entry,
-              receiptBranding,
+              mergedBranding,
               printCount
             );
           }}
@@ -108,11 +123,22 @@ function TimelineEntryBlock({
           Print Receipt
         </Button>
       )}
+      {!isRefund && printHistory.length > 0 ? (
+        <div className="mt-3">
+          <p className="mb-2 font-medium">Print History</p>
+          <ReceiptPrintHistoryList entries={printHistory} />
+        </div>
+      ) : null}
     </div>
   );
 }
 
-export function PaymentDetailsContent({ payment, access }: Props) {
+export function PaymentDetailsContent({
+  payment,
+  access,
+  receiptBranding,
+  printHistory,
+}: Props) {
   const [refundOpen, setRefundOpen] = useState(false);
 
   return (
@@ -214,7 +240,12 @@ export function PaymentDetailsContent({ payment, access }: Props) {
             <div className="space-y-4">
               {payment.timeline.map((entry, index) => (
                 <div key={entry.id}>
-                  <TimelineEntryBlock payment={payment} entry={entry} />
+                  <TimelineEntryBlock
+                    payment={payment}
+                    entry={entry}
+                    receiptBranding={receiptBranding}
+                    printHistory={printHistory.byTransaction[entry.id] ?? []}
+                  />
                   {index < payment.timeline.length - 1 && (
                     <hr className="my-4 border-border" />
                   )}

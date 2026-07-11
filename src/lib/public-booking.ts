@@ -1,8 +1,5 @@
 import { computeStayPricing, formatRatePercentLabel } from "@/lib/reservations/pricing";
 import type {
-  BookingConfirmation,
-  BookingGuest,
-  BookingSearch,
   PublicBookingPricingSettings,
   PublicRoom,
 } from "@/types/public";

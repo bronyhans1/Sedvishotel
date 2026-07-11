@@ -1,5 +1,5 @@
 import type { BaseRepository } from "@/repositories/base.repository";
-import type { DbFloorId, DbRoom, DbRoomStatus, DbRoomWithType } from "@/types/database";
+import type { DbRoom, DbRoomStatus, DbRoomWithType } from "@/types/database";
 
 export interface IRoomRepository {
   getAll(includeArchived?: boolean): Promise<DbRoomWithType[]>;

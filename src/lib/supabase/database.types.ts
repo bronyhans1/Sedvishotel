@@ -102,18 +102,18 @@ type RolesInverseRelationships = [
   },
 ];
 
-const RoomsRelationships = [
+type RoomsRelationships = [
   {
-    foreignKeyName: "rooms_room_type_id_fkey",
-    columns: ["room_type_id"],
-    referencedRelation: "room_types",
-    referencedColumns: ["id"],
+    foreignKeyName: "rooms_room_type_id_fkey";
+    columns: ["room_type_id"];
+    referencedRelation: "room_types";
+    referencedColumns: ["id"];
   },
   {
-    foreignKeyName: "rooms_floor_id_fkey",
-    columns: ["floor_id"],
-    referencedRelation: "floors",
-    referencedColumns: ["id"],
+    foreignKeyName: "rooms_floor_id_fkey";
+    columns: ["floor_id"];
+    referencedRelation: "floors";
+    referencedColumns: ["id"];
   },
 ];
 
@@ -147,7 +147,7 @@ export type Database = {
       sale_payments: TableRow<DbSalePayment>;
       guest_folios: TableRow<DbGuestFolio>;
       folio_entries: TableRow<DbFolioEntry>;
-      rooms: TableRow<DbRoom, typeof RoomsRelationships>;
+      rooms: TableRow<DbRoom, RoomsRelationships>;
       guests: TableRow<DbGuest>;
       reservations: TableRow<DbReservation>;
       reservation_guests: TableRow<DbReservationGuest>;
@@ -214,6 +214,32 @@ export type Database = {
       shms_next_document_number: {
         Args: {
           p_kind: string;
+        };
+        Returns: string;
+      };
+      shms_peek_next_document_number: {
+        Args: {
+          p_kind: string;
+        };
+        Returns: string;
+      };
+      shms_get_document_sequence_state: {
+        Args: {
+          p_kind: string;
+        };
+        Returns: Record<string, unknown>;
+      };
+      shms_set_document_sequence: {
+        Args: {
+          p_kind: string;
+          p_next_number: number;
+        };
+        Returns: Record<string, unknown>;
+      };
+      shms_format_document_number: {
+        Args: {
+          p_kind: string;
+          p_sequence: number;
         };
         Returns: string;
       };

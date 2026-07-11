@@ -2,17 +2,19 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { Eye, Pencil, Plus, Receipt } from "lucide-react";
+import { Eye, Pencil, Plus } from "lucide-react";
 
 import { PaymentEmptyState } from "@/components/payments/PaymentEmptyState";
 import { PaymentMethodLabel } from "@/components/payments/PaymentMethodLabel";
 import { PaymentStatusBadge } from "@/components/payments/PaymentStatusBadge";
+import { PaymentReceiptActions } from "@/components/payments/PaymentReceiptActions";
 import { RecordPaymentModal } from "@/components/payments/RecordPaymentModal";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { StatCard } from "@/components/shared/StatCard";
 import { Button } from "@/components/ui/button";
 import type { PaymentRecordOption } from "@/features/payments/load-payments-page";
 import type { PaymentAccess } from "@/lib/auth/payment-access.types";
+import type { ReceiptBranding } from "@/lib/receipt/receipt-core";
 import { formatCurrency } from "@/lib/utils";
 import { siteConfig } from "@/config/site";
 import {
@@ -30,6 +32,7 @@ type PaymentsPageContentProps = {
   stats: PaymentStats;
   access: PaymentAccess;
   recordOptions: PaymentRecordOption;
+  receiptBranding: ReceiptBranding;
 };
 
 export function PaymentsPageContent({
@@ -37,6 +40,7 @@ export function PaymentsPageContent({
   stats,
   access,
   recordOptions,
+  receiptBranding,
 }: PaymentsPageContentProps) {
   const [recordOpen, setRecordOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -129,7 +133,12 @@ export function PaymentsPageContent({
                           <Link href={`/dashboard/payments/${p.id}`}><Eye className="h-4 w-4" /></Link>
                         </Button>
                         <Button variant="ghost" size="sm" disabled><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="sm" disabled><Receipt className="h-4 w-4" /></Button>
+                        <PaymentReceiptActions
+                          payment={p}
+                          receiptBranding={receiptBranding}
+                          variant="icon"
+                          size="sm"
+                        />
                       </div>
                     </td>
                   </tr>
@@ -151,6 +160,7 @@ export function PaymentsPageContent({
           defaultTaxRate={recordOptions.defaultTaxRate}
           defaultVatApplied={recordOptions.defaultVatApplied}
           canOverrideVat={access.canOverrideVat}
+          receiptBranding={receiptBranding}
         />
       )}
     </PageContainer>
