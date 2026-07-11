@@ -142,6 +142,9 @@ export interface IGuestFolioService {
   getAuthoritativeSettlement(
     reservationId: string
   ): Promise<AuthoritativeSettlement | null>;
+  getRecordedSettlement(
+    reservationId: string
+  ): Promise<AuthoritativeSettlement | null>;
   syncReservationSettlement(reservationId: string): Promise<void>;
   integratePaymentRefund(
     ctx: ServiceContext,
@@ -222,7 +225,13 @@ export class GuestFolioService implements IGuestFolioService {
       return null;
     }
 
-    const folio = await this.folios.getOpenByReservationId(reservationId);
+    return this.getRecordedSettlement(reservationId);
+  }
+
+  async getRecordedSettlement(
+    reservationId: string
+  ): Promise<AuthoritativeSettlement | null> {
+    const folio = await this.folios.getByReservationId(reservationId);
     if (!folio) return null;
 
     return deriveAuthoritativeSettlement(this.mapFolioEntries(folio));

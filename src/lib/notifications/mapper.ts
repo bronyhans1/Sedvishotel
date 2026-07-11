@@ -7,6 +7,7 @@ const TYPE_MAP: Record<string, NotificationType> = {
   check_in_alert: "guest_checked_in",
   check_out_alert: "guest_checked_out",
   housekeeping_alert: "housekeeping_assigned",
+  shift_handover_alert: "shift_handover_alert",
   system_alert: "outstanding_balance",
 };
 

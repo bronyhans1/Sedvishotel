@@ -20,6 +20,7 @@ import type {
   PosSale,
   PosSaleCompletionResult,
   PosSaleHistoryItem,
+  SalePaymentStatus,
   PosVatOverride,
 } from "@/types/pos";
 
@@ -98,6 +99,27 @@ export class PosService implements IPosService {
     });
   }
 
+  private async resolvePaymentStatus(
+    sale: Awaited<ReturnType<IPosRepository["getById"]>>
+  ): Promise<SalePaymentStatus> {
+    if (
+      !sale ||
+      sale.payment_status === "void" ||
+      sale.customer_type !== "room_charge" ||
+      !sale.reservation_id ||
+      !this.folios
+    ) {
+      return sale?.payment_status ?? "pending";
+    }
+
+    const settlement = await this.folios.getRecordedSettlement(sale.reservation_id);
+    if (!settlement || settlement.totalAmount <= 0) {
+      return sale.payment_status;
+    }
+
+    return settlement.outstandingBalance <= 0 ? "paid" : "pending";
+  }
+
   async getSale(
     ctx: ServiceContext,
     session: AuthSession,
@@ -105,7 +127,9 @@ export class PosService implements IPosService {
   ): Promise<PosSale | null> {
     this.require(session, "view");
     const row = await this.pos.getById(id);
-    return row ? mapDbSaleToPosSale(row) : null;
+    if (!row) return null;
+    const paymentStatus = await this.resolvePaymentStatus(row);
+    return mapDbSaleToPosSale(row, paymentStatus);
   }
 
   async listSales(
@@ -116,9 +140,30 @@ export class PosService implements IPosService {
   ): Promise<PaginatedResult<PosSaleHistoryItem>> {
     this.require(session, "view");
     const result = await this.pos.findAll(filters, pagination);
+    const roomChargeStatuses = new Map<string, Promise<SalePaymentStatus>>();
+    const paymentStatuses = await Promise.all(
+      result.data.map((sale) => {
+        if (
+          sale.customer_type !== "room_charge" ||
+          sale.payment_status === "void" ||
+          !sale.reservation_id
+        ) {
+          return this.resolvePaymentStatus(sale);
+        }
+
+        const existing = roomChargeStatuses.get(sale.reservation_id);
+        if (existing) return existing;
+
+        const resolved = this.resolvePaymentStatus(sale);
+        roomChargeStatuses.set(sale.reservation_id, resolved);
+        return resolved;
+      })
+    );
     return {
       ...result,
-      data: result.data.map(mapDbSaleToHistoryItem),
+      data: result.data.map((sale, index) =>
+        mapDbSaleToHistoryItem(sale, paymentStatuses[index])
+      ),
     };
   }
 
@@ -284,8 +329,10 @@ export class PosService implements IPosService {
       await this.folios.syncReservationSettlement(input.reservationId);
     }
 
+    const paymentStatus = await this.resolvePaymentStatus(row);
+
     return {
-      sale: mapDbSaleToPosSale(row),
+      sale: mapDbSaleToPosSale(row, paymentStatus),
       idempotentReplay: commitResult.idempotentReplay,
     };
   }

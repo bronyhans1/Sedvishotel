@@ -21,10 +21,52 @@ export async function loadShiftHandoverPageData(): Promise<
   }
 
   const service = await getShiftHandoverService();
-  const [currentShift, history] = await Promise.all([
-    service.getCurrentShift(ctx, session),
-    service.listHandovers(ctx, session),
-  ]);
+  const pageData = await service.loadPageData(ctx, session);
 
-  return { currentShift, history, access };
+  return { ...pageData, access };
+}
+
+export async function loadShiftHandoverAttentionCount(): Promise<number> {
+  if (!isSupabaseConfigured()) {
+    return 0;
+  }
+
+  try {
+    const { session, ctx } = await getServiceContextForPage();
+    const access = getShiftHandoverAccess(session);
+    if (!access.canView) {
+      return 0;
+    }
+    const service = await getShiftHandoverService();
+    return service.getAttentionCount(ctx, session);
+  } catch {
+    return 0;
+  }
+}
+
+export async function loadPendingHandoverAcknowledgement() {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    const { session, ctx } = await getServiceContextForPage();
+    const access = getShiftHandoverAccess(session);
+    if (!access.canView) {
+      return null;
+    }
+    const service = await getShiftHandoverService();
+    const pageData = await service.loadPageData(ctx, session);
+    if (!pageData.pendingAcknowledgement) {
+      return null;
+    }
+    return {
+      shift: pageData.pendingAcknowledgement,
+      pendingTasks: pageData.pendingAckTasks,
+      openIssues: pageData.pendingAckIssues,
+      access,
+    };
+  } catch {
+    return null;
+  }
 }

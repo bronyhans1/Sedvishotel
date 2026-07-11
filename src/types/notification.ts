@@ -7,7 +7,8 @@ export type NotificationType =
   | "guest_checked_out"
   | "room_ready"
   | "housekeeping_assigned"
-  | "outstanding_balance";
+  | "outstanding_balance"
+  | "shift_handover_alert";
 
 export type Notification = {
   id: string;

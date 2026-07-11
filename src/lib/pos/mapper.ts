@@ -31,7 +31,10 @@ export function mapDbSalePaymentToPosSalePayment(
   };
 }
 
-export function mapDbSaleToPosSale(row: DbSaleWithRelations): PosSale {
+export function mapDbSaleToPosSale(
+  row: DbSaleWithRelations,
+  paymentStatus = row.payment_status
+): PosSale {
   return {
     id: row.id,
     saleNumber: row.sale_number,
@@ -47,7 +50,7 @@ export function mapDbSaleToPosSale(row: DbSaleWithRelations): PosSale {
     vatAmount: Number(row.vat_amount),
     discount: Number(row.discount),
     total: Number(row.total),
-    paymentStatus: row.payment_status,
+    paymentStatus,
     vatApplied: row.vat_applied,
     vatRate: row.vat_rate != null ? Number(row.vat_rate) : null,
     notes: row.notes,
@@ -64,7 +67,10 @@ function paymentMethodLabel(method: PosSalePayment["paymentMethod"]): string {
   );
 }
 
-export function mapDbSaleToHistoryItem(row: DbSaleWithRelations): PosSaleHistoryItem {
+export function mapDbSaleToHistoryItem(
+  row: DbSaleWithRelations,
+  paymentStatus = row.payment_status
+): PosSaleHistoryItem {
   const payment = row.payments?.[0] ?? null;
   const paymentMethod: PosSalePayment["paymentMethod"] | null =
     row.customer_type === "room_charge"
@@ -85,7 +91,7 @@ export function mapDbSaleToHistoryItem(row: DbSaleWithRelations): PosSaleHistory
     paymentMethod,
     paymentMethodLabel: paymentMethod ? paymentMethodLabel(paymentMethod) : "—",
     total: Number(row.total),
-    paymentStatus: row.payment_status,
+    paymentStatus,
     receiptNumber: payment?.receipt_number ?? null,
   };
 }

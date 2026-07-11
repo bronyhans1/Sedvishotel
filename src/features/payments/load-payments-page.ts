@@ -56,7 +56,7 @@ export async function loadPaymentsPageData() {
       guestService.listGuests(ctx, session),
       reservationService.listReservations(ctx, session),
       getGuestFolioService(),
-      loadHotelDocumentSettings(ctx, session),
+      loadHotelDocumentSettings(),
     ]);
 
   const recordableReservations = reservations.filter(

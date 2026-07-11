@@ -7,6 +7,8 @@ import type {
   DbNightAudit,
   DbNotification,
   DbShiftHandover,
+  DbShiftHandoverIssue,
+  DbShiftHandoverTask,
   DbPayment,
   DbPaymentTransaction,
   DbPermission,
@@ -159,6 +161,8 @@ export type Database = {
       activity_logs: TableRow<DbActivityLog>;
       night_audits: TableRow<DbNightAudit>;
       shift_handovers: TableRow<DbShiftHandover>;
+      shift_handover_tasks: TableRow<DbShiftHandoverTask>;
+      shift_handover_issues: TableRow<DbShiftHandoverIssue>;
       hotel_settings: TableRow<DbHotelSettings>;
       public_booking_requests: TableRow<DbPublicBookingRequest>;
       room_photos: TableRow<DbRoomPhoto>;

@@ -23,7 +23,7 @@ export async function loadPaymentDetail(id: string) {
   const service = await getPaymentService();
   const [payment, documentSettings, printHistory] = await Promise.all([
     service.getById(ctx, session, id),
-    loadHotelDocumentSettings(ctx, session),
+    loadHotelDocumentSettings(),
     service.getReceiptPrintHistory(ctx, session, id),
   ]);
 

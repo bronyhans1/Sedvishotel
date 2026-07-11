@@ -39,9 +39,10 @@ type NavbarProps = {
   user: CurrentUser | null;
   onMenuClick?: () => void;
   notifications?: Notification[];
+  navBadges?: Record<string, string>;
 };
 
-export function Navbar({ user, onMenuClick, notifications = [] }: NavbarProps) {
+export function Navbar({ user, onMenuClick, notifications = [], navBadges = {} }: NavbarProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [signOutOpen, setSignOutOpen] = useState(false);
@@ -77,6 +78,7 @@ export function Navbar({ user, onMenuClick, notifications = [] }: NavbarProps) {
           <SheetTitle className="sr-only">Navigation menu</SheetTitle>
           <Sidebar
             permissions={user?.permissions ?? []}
+            navBadges={navBadges}
             onNavigate={() => {}}
           />
         </SheetContent>

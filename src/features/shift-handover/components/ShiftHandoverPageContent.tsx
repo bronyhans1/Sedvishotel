@@ -1,10 +1,18 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Clock, LogIn, LogOut } from "lucide-react";
+import {
+  AlertTriangle,
+  Clock,
+  History,
+  LogIn,
+  LogOut,
+} from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { PageContainer } from "@/components/shared/PageContainer";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -18,8 +26,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { closeShiftAction, openShiftAction } from "@/features/shift-handover/actions";
+import {
+  acknowledgeHandoverAction,
+  closeShiftAction,
+  openShiftAction,
+} from "@/features/shift-handover/actions";
 import { ShiftHandoverHistoryTable } from "@/features/shift-handover/components/ShiftHandoverHistoryTable";
+import { ShiftHandoverIssuesList } from "@/features/shift-handover/components/ShiftHandoverIssuesList";
+import { ShiftHandoverTasksList } from "@/features/shift-handover/components/ShiftHandoverTasksList";
 import { ShiftStatusBadge } from "@/features/shift-handover/components/ShiftStatusBadge";
 import { useToast } from "@/hooks/use-toast";
 import type { ShiftHandoverAccess } from "@/lib/auth/shift-handover-access.types";
@@ -27,11 +41,21 @@ import { formatHandoverTimestamp } from "@/lib/shift-handover/format";
 import { formatShiftTypeLabel } from "@/lib/shift-handover/mapper";
 import { siteConfig } from "@/config/site";
 import { formatCurrency } from "@/lib/utils";
-import type { ShiftHandover, ShiftType } from "@/types/shift-handover";
+import type {
+  ShiftHandover,
+  ShiftHandoverIssue,
+  ShiftHandoverTask,
+  ShiftType,
+} from "@/types/shift-handover";
 
 type ShiftHandoverPageContentProps = {
   currentShift: ShiftHandover | null;
   history: ShiftHandover[];
+  pendingTasks: ShiftHandoverTask[];
+  openIssues: ShiftHandoverIssue[];
+  recentlyClosed: ShiftHandover | null;
+  pendingAcknowledgement: ShiftHandover | null;
+  attentionCount: number;
   access: ShiftHandoverAccess;
 };
 
@@ -40,6 +64,11 @@ const SHIFT_TYPES: ShiftType[] = ["morning", "afternoon", "night"];
 export function ShiftHandoverPageContent({
   currentShift,
   history,
+  pendingTasks,
+  openIssues,
+  recentlyClosed,
+  pendingAcknowledgement,
+  attentionCount,
   access,
 }: ShiftHandoverPageContentProps) {
   const router = useRouter();
@@ -50,24 +79,24 @@ export function ShiftHandoverPageContent({
   const [shiftType, setShiftType] = useState<ShiftType>("morning");
   const [cashDrawerAmount, setCashDrawerAmount] = useState("");
   const [notes, setNotes] = useState("");
-  const [pendingTasks, setPendingTasks] = useState("");
-  const [outstandingIssues, setOutstandingIssues] = useState("");
+  const [pendingTasksText, setPendingTasksText] = useState("");
+  const [outstandingIssuesText, setOutstandingIssuesText] = useState("");
   const [closingCash, setClosingCash] = useState("");
-  const [closeNotes, setCloseNotes] = useState("");
-  const [closeIssues, setCloseIssues] = useState("");
+  const [closingNotes, setClosingNotes] = useState("");
+
+  const needsAttention = attentionCount > 0;
 
   function resetOpenForm() {
     setShiftType("morning");
     setCashDrawerAmount("");
     setNotes("");
-    setPendingTasks("");
-    setOutstandingIssues("");
+    setPendingTasksText("");
+    setOutstandingIssuesText("");
   }
 
   function resetCloseForm() {
     setClosingCash("");
-    setCloseNotes("");
-    setCloseIssues(currentShift?.outstandingIssues ?? "");
+    setClosingNotes("");
   }
 
   function runOpenShift() {
@@ -82,8 +111,8 @@ export function ShiftHandoverPageContent({
         shiftType,
         cashDrawerAmount: amount,
         notes: notes.trim() || undefined,
-        pendingTasks: pendingTasks.trim() || undefined,
-        outstandingIssues: outstandingIssues.trim() || undefined,
+        pendingTasks: pendingTasksText.trim() || undefined,
+        outstandingIssues: outstandingIssuesText.trim() || undefined,
       });
       if (!result.success) {
         toast.error(result.error);
@@ -105,15 +134,27 @@ export function ShiftHandoverPageContent({
     startTransition(async () => {
       const result = await closeShiftAction({
         closingCash: amount,
-        notes: closeNotes.trim() || undefined,
-        outstandingIssues: closeIssues.trim() || undefined,
+        closingNotes: closingNotes.trim() || undefined,
       });
       if (!result.success) {
         toast.error(result.error);
         return;
       }
-      toast.celebrate("Shift Closed", "Shift handover completed.");
+      toast.celebrate("Shift Closed", "Handover package saved for incoming staff.");
       resetCloseForm();
+      router.refresh();
+    });
+  }
+
+  function acknowledgePending() {
+    if (!pendingAcknowledgement) return;
+    startTransition(async () => {
+      const result = await acknowledgeHandoverAction(pendingAcknowledgement.id);
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Handover acknowledged.");
       router.refresh();
     });
   }
@@ -129,13 +170,51 @@ export function ShiftHandoverPageContent({
             Open Shift
           </Button>
         ) : access.canCloseShift && currentShift ? (
-          <Button size="sm" disabled={isPending} onClick={() => { resetCloseForm(); setCloseDialog(true); }}>
+          <Button
+            size="sm"
+            disabled={isPending}
+            onClick={() => {
+              resetCloseForm();
+              setCloseDialog(true);
+            }}
+          >
             <LogOut className="h-4 w-4" />
             Close Shift
           </Button>
         ) : undefined
       }
     >
+      {needsAttention ? (
+        <Card className="border-amber-200/70 bg-amber-50/40 dark:border-amber-900/50 dark:bg-amber-950/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              Needs Your Attention
+              <StatusBadge status="reserved" label={String(attentionCount)} />
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            {pendingAcknowledgement ? (
+              <p>
+                Unacknowledged handover from {pendingAcknowledgement.closedByName ?? "previous staff"} (
+                {pendingAcknowledgement.handoverNumber}).
+              </p>
+            ) : null}
+            {pendingTasks.length > 0 ? (
+              <p>{pendingTasks.length} pending task(s) require action.</p>
+            ) : null}
+            {openIssues.length > 0 ? (
+              <p>{openIssues.length} outstanding issue(s) remain open.</p>
+            ) : null}
+            {pendingAcknowledgement && access.canView ? (
+              <Button size="sm" variant="outline" disabled={isPending} onClick={acknowledgePending}>
+                Acknowledge Handover
+              </Button>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
           <div>
@@ -167,33 +246,98 @@ export function ShiftHandoverPageContent({
               <span className="font-medium">{formatHandoverTimestamp(currentShift.openedAt)}</span>
             </p>
             <p>
-              <span className="text-muted-foreground">Cash Drawer Amount: </span>
+              <span className="text-muted-foreground">Opening Cash: </span>
               <span className="font-medium">{formatCurrency(currentShift.cashDrawerAmount)}</span>
             </p>
-            {currentShift.pendingTasks ? (
+            {currentShift.openingNotes ? (
               <p className="sm:col-span-2">
-                <span className="text-muted-foreground">Pending Tasks: </span>
-                <span className="font-medium">{currentShift.pendingTasks}</span>
-              </p>
-            ) : null}
-            {currentShift.outstandingIssues ? (
-              <p className="sm:col-span-2">
-                <span className="text-muted-foreground">Outstanding Issues: </span>
-                <span className="font-medium">{currentShift.outstandingIssues}</span>
-              </p>
-            ) : null}
-            {currentShift.notes ? (
-              <p className="sm:col-span-2">
-                <span className="text-muted-foreground">Notes: </span>
-                <span className="font-medium">{currentShift.notes}</span>
+                <span className="text-muted-foreground">Opening Notes: </span>
+                <span className="font-medium">{currentShift.openingNotes}</span>
               </p>
             ) : null}
           </CardContent>
         ) : null}
       </Card>
 
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pending Tasks</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ShiftHandoverTasksList
+              tasks={pendingTasks}
+              access={access}
+              highlight={pendingTasks.length > 0}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Outstanding Issues</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ShiftHandoverIssuesList
+              issues={openIssues}
+              access={access}
+              highlight={openIssues.length > 0}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
+      {recentlyClosed ? (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+            <CardTitle className="text-base">Recently Closed Shift</CardTitle>
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/dashboard/shift-handover/${recentlyClosed.handoverNumber}`}>
+                View Details
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent className="grid gap-3 text-sm sm:grid-cols-2">
+            <p>
+              <span className="text-muted-foreground">Shift: </span>
+              <span className="font-medium">
+                {formatShiftTypeLabel(recentlyClosed.shiftType)} ({recentlyClosed.handoverNumber})
+              </span>
+            </p>
+            <p>
+              <span className="text-muted-foreground">Closed By: </span>
+              <span className="font-medium">{recentlyClosed.closedByName ?? "—"}</span>
+            </p>
+            <p>
+              <span className="text-muted-foreground">Closed At: </span>
+              <span className="font-medium">
+                {formatHandoverTimestamp(recentlyClosed.closedAt)}
+              </span>
+            </p>
+            <p>
+              <span className="text-muted-foreground">Cash: </span>
+              <span className="font-medium">
+                {formatCurrency(recentlyClosed.cashDrawerAmount)} →{" "}
+                {recentlyClosed.closingCash != null
+                  ? formatCurrency(recentlyClosed.closingCash)
+                  : "—"}
+              </span>
+            </p>
+            {recentlyClosed.closingNotes ? (
+              <p className="sm:col-span-2">
+                <span className="text-muted-foreground">Closing Notes: </span>
+                <span className="font-medium">{recentlyClosed.closingNotes}</span>
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold">Handover History</h2>
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
+          <History className="h-5 w-5" />
+          Handover History
+        </h2>
         <ShiftHandoverHistoryTable handovers={history} />
       </div>
 
@@ -220,7 +364,7 @@ export function ShiftHandoverPageContent({
               </select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="cash-drawer">Cash Drawer Amount</Label>
+              <Label htmlFor="cash-drawer">Opening Cash Amount</Label>
               <Input
                 id="cash-drawer"
                 type="number"
@@ -231,7 +375,7 @@ export function ShiftHandoverPageContent({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="open-notes">Notes</Label>
+              <Label htmlFor="open-notes">Opening Notes</Label>
               <Textarea
                 id="open-notes"
                 value={notes}
@@ -240,21 +384,23 @@ export function ShiftHandoverPageContent({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="pending-tasks">Pending Tasks</Label>
+              <Label htmlFor="pending-tasks">New Pending Tasks (one per line)</Label>
               <Textarea
                 id="pending-tasks"
-                value={pendingTasks}
-                onChange={(e) => setPendingTasks(e.target.value)}
+                value={pendingTasksText}
+                onChange={(e) => setPendingTasksText(e.target.value)}
                 rows={2}
+                placeholder="Follow up on room 204 minibar&#10;Prepare VIP arrival folder"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="open-issues">Outstanding Issues</Label>
+              <Label htmlFor="open-issues">New Outstanding Issues (one per line)</Label>
               <Textarea
                 id="open-issues"
-                value={outstandingIssues}
-                onChange={(e) => setOutstandingIssues(e.target.value)}
+                value={outstandingIssuesText}
+                onChange={(e) => setOutstandingIssuesText(e.target.value)}
                 rows={2}
+                placeholder="Elevator maintenance pending&#10;POS terminal #2 intermittent"
               />
             </div>
           </div>
@@ -273,7 +419,9 @@ export function ShiftHandoverPageContent({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Close Shift</DialogTitle>
-            <DialogDescription>Complete the current shift handover.</DialogDescription>
+            <DialogDescription>
+              Complete the shift and save the handover package for incoming staff.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -288,23 +436,22 @@ export function ShiftHandoverPageContent({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="close-notes">Notes</Label>
+              <Label htmlFor="close-notes">Closing Notes</Label>
               <Textarea
                 id="close-notes"
-                value={closeNotes}
-                onChange={(e) => setCloseNotes(e.target.value)}
-                rows={2}
+                value={closingNotes}
+                onChange={(e) => setClosingNotes(e.target.value)}
+                rows={3}
+                placeholder="Summary for the incoming shift..."
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="close-issues">Outstanding Issues</Label>
-              <Textarea
-                id="close-issues"
-                value={closeIssues}
-                onChange={(e) => setCloseIssues(e.target.value)}
-                rows={2}
-              />
-            </div>
+            {(pendingTasks.length > 0 || openIssues.length > 0) && (
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+                <p className="font-medium text-foreground">Handover package will include:</p>
+                <p>{pendingTasks.length} pending task(s) and {openIssues.length} open issue(s).</p>
+                <p className="mt-1 text-xs">Outstanding issues persist until explicitly resolved.</p>
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setCloseDialog(false)} disabled={isPending}>

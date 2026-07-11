@@ -31,7 +31,7 @@ export async function loadInvoiceDetail(id: string) {
 
   const [{ invoiceDocumentSettings, receiptBranding }, payment] =
     await Promise.all([
-      loadHotelDocumentSettings(ctx, session),
+      loadHotelDocumentSettings(),
       paymentService.getByReservationId(ctx, session, invoice.reservationId),
     ]);
 

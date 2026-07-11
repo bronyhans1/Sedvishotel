@@ -70,6 +70,9 @@ export const MIGRATION_ORDER = [
   "064_reservation_overlap_protection.sql",
   "065_atomic_payment_transactions.sql",
   "066_atomic_pos_transactions.sql",
+  "067_finance_final_polish.sql",
+  "068_document_number_preview.sql",
+  "069_shift_handover_workflow.sql",
 ] as const;
 
 export const SEED_ORDER = [

@@ -560,14 +560,47 @@ export interface DbShiftHandover {
   shift_type: DbShiftType;
   opened_by: string | null;
   closed_by: string | null;
+  acknowledged_by: string | null;
   opened_at: Timestamp;
   closed_at: Timestamp | null;
+  acknowledged_at: Timestamp | null;
   cash_drawer_amount: number;
   closing_cash: number | null;
   notes: string | null;
+  closing_notes: string | null;
   pending_tasks: string | null;
   outstanding_issues: string | null;
   status: DbShiftHandoverStatus;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export type DbShiftTaskStatus = "pending" | "completed";
+export type DbShiftIssueStatus = "open" | "resolved";
+
+export interface DbShiftHandoverTask {
+  id: string;
+  description: string;
+  status: DbShiftTaskStatus;
+  shift_handover_id: string | null;
+  origin_shift_handover_id: string;
+  created_by: string | null;
+  completed_by: string | null;
+  completed_at: Timestamp | null;
+  completed_during_shift_id: string | null;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export interface DbShiftHandoverIssue {
+  id: string;
+  description: string;
+  status: DbShiftIssueStatus;
+  origin_shift_handover_id: string;
+  created_by: string | null;
+  resolved_by: string | null;
+  resolved_at: Timestamp | null;
+  resolved_during_shift_id: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 }

@@ -27,7 +27,7 @@ export async function loadReservationFinanceContext(
   const invoiceAccess = getInvoiceAccess(session);
   const paymentAccess = getPaymentAccess(session);
   const [documentSettings, invoiceService, paymentService] = await Promise.all([
-    loadHotelDocumentSettings(ctx, session),
+    loadHotelDocumentSettings(),
     getInvoiceService(),
     getPaymentService(),
   ]);

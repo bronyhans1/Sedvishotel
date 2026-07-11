@@ -20,6 +20,8 @@ type SidebarProps = {
   permissions?: string[];
   /** Pre-filtered items (optional; computed from permissions when omitted). */
   items?: NavItem[];
+  /** Dynamic badge labels keyed by nav href (e.g. attention count). */
+  navBadges?: Record<string, string>;
 };
 
 function normalizePathname(pathname: string): string {
@@ -57,6 +59,7 @@ export function Sidebar({
   className,
   permissions = [],
   items,
+  navBadges = {},
 }: SidebarProps) {
   const pathname = usePathname();
   const branding = useBranding();
@@ -204,6 +207,13 @@ export function Sidebar({
                 >
                   <Icon className="h-4 w-4 shrink-0" />
                   <span className="flex-1">{item.title}</span>
+                  {item.href && navBadges[item.href] ? (
+                    <StatusBadge
+                      status="reserved"
+                      label={navBadges[item.href]}
+                      className="scale-90"
+                    />
+                  ) : null}
                 </Link>
               )}
             </div>

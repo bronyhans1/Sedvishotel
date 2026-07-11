@@ -19,6 +19,8 @@ export const DbTables = {
   activityLogs: "activity_logs",
   nightAudits: "night_audits",
   shiftHandovers: "shift_handovers",
+  shiftHandoverTasks: "shift_handover_tasks",
+  shiftHandoverIssues: "shift_handover_issues",
   hotelSettings: "hotel_settings",
   publicBookingRequests: "public_booking_requests",
   productCategories: "product_categories",

@@ -11,11 +11,17 @@ export function buildShiftHandoverCsv(shift: ShiftHandover): string {
     `Opened At,${shift.openedAt}`,
     `Closed By,${shift.closedByName ?? ""}`,
     `Closed At,${shift.closedAt ?? ""}`,
-    `Cash Drawer Amount,${shift.cashDrawerAmount}`,
+    `Acknowledged By,${shift.acknowledgedByName ?? ""}`,
+    `Acknowledged At,${shift.acknowledgedAt ?? ""}`,
+    `Opening Cash,${shift.cashDrawerAmount}`,
     `Closing Cash,${shift.closingCash ?? ""}`,
-    `Notes,${shift.notes ?? ""}`,
-    `Pending Tasks,${shift.pendingTasks ?? ""}`,
-    `Outstanding Issues,${shift.outstandingIssues ?? ""}`,
+    `Cash Variance,${shift.cashVariance ?? ""}`,
+    `Opening Notes,${shift.openingNotes ?? ""}`,
+    `Closing Notes,${shift.closingNotes ?? ""}`,
+    `Pending Tasks Snapshot,${shift.pendingTasksSnapshot ?? ""}`,
+    `Outstanding Issues Snapshot,${shift.outstandingIssuesSnapshot ?? ""}`,
+    `Tasks Completed During Shift,${shift.tasksCompletedCount}`,
+    `Issues Resolved During Shift,${shift.issuesResolvedCount}`,
   ];
   return lines.join("\n");
 }

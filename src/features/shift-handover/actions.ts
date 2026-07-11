@@ -8,10 +8,16 @@ import { getServiceContext } from "@/lib/auth/service-context";
 import { buildShiftHandoverCsv } from "@/lib/shift-handover/format";
 import { getShiftHandoverService } from "@/lib/shift-handover/get-shift-handover-service";
 import { ServiceError } from "@/services/types";
-import type { CloseShiftInput, OpenShiftInput, ShiftHandover } from "@/types/shift-handover";
+import type {
+  CloseShiftInput,
+  OpenShiftInput,
+  ShiftHandover,
+  ShiftHandoverIssue,
+  ShiftHandoverTask,
+} from "@/types/shift-handover";
 
 export type ShiftHandoverActionResult =
-  | { success: true; shift?: ShiftHandover }
+  | { success: true; shift?: ShiftHandover; task?: ShiftHandoverTask; issue?: ShiftHandoverIssue }
   | { success: false; error: string; code?: string };
 
 export type ShiftHandoverExportResult =
@@ -51,6 +57,51 @@ export async function closeShiftAction(
     const shift = await service.closeShift(ctx, session, input);
     revalidateOperationalFinancePaths();
     return { success: true, shift };
+  } catch (err) {
+    unstable_rethrow(err);
+    return toActionResult(err);
+  }
+}
+
+export async function acknowledgeHandoverAction(
+  handoverId: string
+): Promise<ShiftHandoverActionResult> {
+  try {
+    const { session, ctx } = await getServiceContext();
+    const service = await getShiftHandoverService();
+    const shift = await service.acknowledgeHandover(ctx, session, handoverId);
+    revalidateOperationalFinancePaths();
+    return { success: true, shift };
+  } catch (err) {
+    unstable_rethrow(err);
+    return toActionResult(err);
+  }
+}
+
+export async function completeShiftTaskAction(
+  taskId: string
+): Promise<ShiftHandoverActionResult> {
+  try {
+    const { session, ctx } = await getServiceContext();
+    const service = await getShiftHandoverService();
+    const task = await service.completeTask(ctx, session, taskId);
+    revalidateOperationalFinancePaths();
+    return { success: true, task };
+  } catch (err) {
+    unstable_rethrow(err);
+    return toActionResult(err);
+  }
+}
+
+export async function resolveShiftIssueAction(
+  issueId: string
+): Promise<ShiftHandoverActionResult> {
+  try {
+    const { session, ctx } = await getServiceContext();
+    const service = await getShiftHandoverService();
+    const issue = await service.resolveIssue(ctx, session, issueId);
+    revalidateOperationalFinancePaths();
+    return { success: true, issue };
   } catch (err) {
     unstable_rethrow(err);
     return toActionResult(err);

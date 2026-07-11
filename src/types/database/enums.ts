@@ -122,7 +122,8 @@ export type DbNotificationType =
   | "housekeeping_alert"
   | "system_alert"
   | "check_in_alert"
-  | "check_out_alert";
+  | "check_out_alert"
+  | "shift_handover_alert";
 
 export type DbNotificationPriority = "low" | "medium" | "high" | "critical";
 
@@ -207,6 +208,9 @@ export const ActivityActionCodes = {
   NIGHT_AUDIT_CASH_VARIANCE: "night_audit.cash_variance",
   SHIFT_OPENED: "shift.opened",
   SHIFT_CLOSED: "shift.closed",
+  SHIFT_ACKNOWLEDGED: "shift.acknowledged",
+  SHIFT_TASK_COMPLETED: "shift.task_completed",
+  SHIFT_ISSUE_RESOLVED: "shift.issue_resolved",
   ROOM_CREATED: "room.created",
   ROOM_UPDATED: "room.updated",
   ROOM_STATUS_CHANGED: "room.status_changed",

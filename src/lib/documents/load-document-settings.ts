@@ -1,8 +1,6 @@
-import type { AuthSession } from "@/services/auth.service";
-import type { ServiceContext } from "@/services/types";
+import { getDocumentConfigService } from "@/lib/documents/get-document-config-service";
 import { buildReceiptBrandingFromHotelSettings } from "@/lib/receipt/build-receipt-branding";
 import type { ReceiptBranding } from "@/lib/receipt/receipt-core";
-import { getSettingsService } from "@/lib/settings/get-settings-service";
 import type { HotelSettings } from "@/types/settings";
 
 export type InvoiceDocumentSettings = Pick<
@@ -32,20 +30,25 @@ export function buildInvoiceDocumentSettings(
   };
 }
 
-export async function loadHotelDocumentSettings(
-  ctx: ServiceContext,
-  session: AuthSession
-): Promise<{
-  hotelSettings: HotelSettings;
+/**
+ * Loads the curated, non-sensitive document configuration required for
+ * rendering receipts and invoices in operational modules.
+ *
+ * This does NOT require `settings.view` — it reads runtime document
+ * configuration via {@link getDocumentConfigService}. Only curated subsets
+ * (branding + invoice document fields) are returned; the full settings object
+ * (which includes notification/email-template configuration) never leaves the
+ * server through this loader.
+ */
+export async function loadHotelDocumentSettings(): Promise<{
   invoiceDocumentSettings: InvoiceDocumentSettings;
   receiptBranding: ReceiptBranding;
 }> {
-  const settingsService = await getSettingsService();
-  const hotelSettings = await settingsService.getHotelSettings(ctx, session);
+  const service = await getDocumentConfigService();
+  const settings = await service.getDocumentSettings();
 
   return {
-    hotelSettings,
-    invoiceDocumentSettings: buildInvoiceDocumentSettings(hotelSettings),
-    receiptBranding: buildReceiptBrandingFromHotelSettings(hotelSettings),
+    invoiceDocumentSettings: buildInvoiceDocumentSettings(settings),
+    receiptBranding: buildReceiptBrandingFromHotelSettings(settings),
   };
 }

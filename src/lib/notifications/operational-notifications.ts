@@ -18,6 +18,8 @@ export function resolveNotificationHref(notification: Notification): string | nu
       return `/dashboard/reservations/${notification.entityId}`;
     case "housekeeping":
       return "/dashboard/housekeeping";
+    case "shift_handover":
+      return "/dashboard/shift-handover";
     default:
       return null;
   }

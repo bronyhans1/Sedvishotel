@@ -36,6 +36,8 @@ export interface Database {
       activity_logs: { Row: import("@/types/database/tables").DbActivityLog };
       night_audits: { Row: import("@/types/database/tables").DbNightAudit };
       shift_handovers: { Row: import("@/types/database/tables").DbShiftHandover };
+      shift_handover_tasks: { Row: import("@/types/database/tables").DbShiftHandoverTask };
+      shift_handover_issues: { Row: import("@/types/database/tables").DbShiftHandoverIssue };
       hotel_settings: { Row: import("@/types/database/tables").DbHotelSettings };
       public_booking_requests: {
         Row: import("@/types/database/tables").DbPublicBookingRequest;
