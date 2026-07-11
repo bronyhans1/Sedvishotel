@@ -19,6 +19,20 @@ function readJsonBoolean(
   return typeof value === "boolean" ? value : fallback;
 }
 
+function readJsonNumber(
+  json: Record<string, unknown>,
+  key: string,
+  fallback: number
+): number {
+  const value = json[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
 export function mapDbSettingsToHotelSettings(row: DbHotelSettings): HotelSettings {
   const json = row.settings_json ?? {};
 
@@ -29,6 +43,7 @@ export function mapDbSettingsToHotelSettings(row: DbHotelSettings): HotelSetting
     email: row.email ?? "",
     website: row.website ?? "",
     tinNumber: row.tin_number ?? "",
+    registrationNumber: readJsonString(json, "registrationNumber", ""),
     description: row.description ?? "",
     primaryColor: readJsonString(json, "primaryColor", "#1e3a5f"),
     secondaryColor: readJsonString(json, "secondaryColor", "#c9a227"),
@@ -44,13 +59,30 @@ export function mapDbSettingsToHotelSettings(row: DbHotelSettings): HotelSetting
     lateCheckoutHourFee2To4: Number(row.late_checkout_hour_fee_2_4 ?? 100),
     lateCheckoutHourFee4To6: Number(row.late_checkout_hour_fee_4_6 ?? 150),
     currency: row.currency,
+    currencySymbol: readJsonString(json, "currencySymbol", "GH₵"),
     timeZone: row.timezone,
     taxRate: row.tax_rate,
     serviceCharge: row.service_charge,
     invoicePrefix: row.invoice_prefix,
+    invoiceStartingNumber: readJsonNumber(json, "invoiceStartingNumber", 1),
+    invoiceDueDays: readJsonNumber(json, "invoiceDueDays", 14),
+    autoGenerateInvoiceNumber: readJsonBoolean(json, "autoGenerateInvoiceNumber", true),
     receiptPrefix: row.receipt_prefix,
+    receiptStartingNumber: readJsonNumber(json, "receiptStartingNumber", 1),
+    receiptHeaderMessage: readJsonString(json, "receiptHeaderMessage", ""),
+    receiptFooterMessage: readJsonString(json, "receiptFooterMessage", ""),
+    showHotelLogo: readJsonBoolean(json, "showHotelLogo", true),
+    showQrCode: readJsonBoolean(json, "showQrCode", false),
+    printThankYouMessage: readJsonBoolean(json, "printThankYouMessage", true),
     invoiceFooter: row.invoice_footer ?? "",
     termsAndConditions: row.terms_and_conditions ?? "",
+    paperSize:
+      (readJsonString(json, "paperSize", "a4") as HotelSettings["paperSize"]) || "a4",
+    defaultPrinterMode:
+      (readJsonString(json, "defaultPrinterMode", "browser") as HotelSettings["defaultPrinterMode"]) ||
+      "browser",
+    autoPrintAfterPayment: readJsonBoolean(json, "autoPrintAfterPayment", false),
+    askBeforePrinting: readJsonBoolean(json, "askBeforePrinting", true),
     reservationEmailTemplate: readJsonString(json, "reservationEmailTemplate", ""),
     invoiceEmailTemplate: readJsonString(json, "invoiceEmailTemplate", ""),
     reminderEmailTemplate: readJsonString(json, "reminderEmailTemplate", ""),
@@ -101,6 +133,21 @@ export function mapHotelSettingsToDbUpdate(
       secondaryColor: settings.secondaryColor,
       theme: settings.theme,
       faviconUrl: settings.faviconUrl || null,
+      currencySymbol: settings.currencySymbol,
+      registrationNumber: settings.registrationNumber || null,
+      invoiceStartingNumber: settings.invoiceStartingNumber,
+      invoiceDueDays: settings.invoiceDueDays,
+      autoGenerateInvoiceNumber: settings.autoGenerateInvoiceNumber,
+      receiptStartingNumber: settings.receiptStartingNumber,
+      receiptHeaderMessage: settings.receiptHeaderMessage,
+      receiptFooterMessage: settings.receiptFooterMessage,
+      showHotelLogo: settings.showHotelLogo,
+      showQrCode: settings.showQrCode,
+      printThankYouMessage: settings.printThankYouMessage,
+      paperSize: settings.paperSize,
+      defaultPrinterMode: settings.defaultPrinterMode,
+      autoPrintAfterPayment: settings.autoPrintAfterPayment,
+      askBeforePrinting: settings.askBeforePrinting,
       reservationEmailTemplate: settings.reservationEmailTemplate,
       invoiceEmailTemplate: settings.invoiceEmailTemplate,
       reminderEmailTemplate: settings.reminderEmailTemplate,

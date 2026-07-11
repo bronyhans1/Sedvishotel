@@ -203,6 +203,34 @@ export type Database = {
         Args: Record<string, never>;
         Returns: string;
       };
+      next_payment_receipt_locked: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
+      next_invoice_number_locked: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
+      shms_next_document_number: {
+        Args: {
+          p_kind: string;
+        };
+        Returns: string;
+      };
+      shms_record_payment_receipt_print: {
+        Args: {
+          p_transaction_id: string;
+          p_user_id: string;
+        };
+        Returns: Record<string, unknown>;
+      };
+      shms_record_pos_receipt_print: {
+        Args: {
+          p_sale_payment_id: string;
+          p_user_id: string;
+        };
+        Returns: Record<string, unknown>;
+      };
       next_folio_number: {
         Args: Record<string, never>;
         Returns: string;

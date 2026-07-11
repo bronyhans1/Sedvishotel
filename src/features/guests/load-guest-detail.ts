@@ -4,10 +4,10 @@ import { ACCESS_DENIED_PATH } from "@/lib/auth/route-guard";
 
 import { getGuestAccess } from "@/lib/auth/guest-access";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
+import { computeGuestProfileInsights } from "@/lib/guests/profile-insights";
 import { getGuestService } from "@/lib/guests/get-guest-service";
 import { getReservationService } from "@/lib/reservations/get-reservation-service";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import type { Reservation } from "@/types/reservation";
 
 export async function loadGuestDetail(id: string) {
   if (!isSupabaseConfigured()) {
@@ -29,10 +29,17 @@ export async function loadGuestDetail(id: string) {
     notFound();
   }
 
-  const allReservations = await reservationService.listReservations(ctx, session);
-  const guestReservations: Reservation[] = allReservations.filter(
-    (r) => r.guestEmail.toLowerCase() === guest.email.toLowerCase()
+  const [guestReservations, spendContext] = await Promise.all([
+    reservationService.listReservationsByGuestId(ctx, session, id),
+    guestService.getGuestSpendContext(ctx, session, id),
+  ]);
+
+  const profileInsights = computeGuestProfileInsights(
+    guest,
+    guestReservations,
+    spendContext.lifetimePosSpend,
+    spendContext.paymentMethods
   );
 
-  return { guest, access, guestReservations };
+  return { guest, access, guestReservations, profileInsights };
 }

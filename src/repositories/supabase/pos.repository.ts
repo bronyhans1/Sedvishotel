@@ -372,4 +372,18 @@ export class SupabasePosRepository implements IPosRepository {
 
     return mapRpcPosCommitResult((data ?? {}) as RpcPosCommitRow);
   }
+
+  async sumRoomChargeTotalByGuestId(guestId: string): Promise<number> {
+    const { data, error } = await this.client
+      .from("sales")
+      .select("total")
+      .eq("guest_id", guestId)
+      .eq("customer_type", "room_charge");
+
+    if (error) {
+      throw new Error(`Failed to sum guest POS spend: ${error.message}`);
+    }
+
+    return (data ?? []).reduce((sum, row) => sum + Number(row.total), 0);
+  }
 }

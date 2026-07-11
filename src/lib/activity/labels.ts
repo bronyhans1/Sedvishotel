@@ -45,6 +45,8 @@ const ACTION_LABEL_OVERRIDES: Record<string, string> = {
   [ActivityActionCodes.PAYMENT_REFUNDED]: "Payment refunded",
   [ActivityActionCodes.PAYMENT_VAT_OVERRIDDEN]: "VAT overridden on payment",
   [ActivityActionCodes.RECEIPT_GENERATED]: "Receipt generated",
+  [ActivityActionCodes.PAYMENT_RECEIPT_PRINTED]: "Receipt printed",
+  [ActivityActionCodes.PAYMENT_RECEIPT_REPRINTED]: "Receipt reprinted",
   [ActivityActionCodes.GUEST_CREATED]: "Guest profile created",
   [ActivityActionCodes.GUEST_UPDATED]: "Guest profile updated",
   [ActivityActionCodes.GUEST_ARCHIVED]: "Guest profile archived",

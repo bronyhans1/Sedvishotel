@@ -144,6 +144,8 @@ export const ActivityActionCodes = {
   PAYMENT_REFUNDED: "payment.refunded",
   PAYMENT_VAT_OVERRIDDEN: "payment.vat_overridden",
   RECEIPT_GENERATED: "payment.receipt_generated",
+  PAYMENT_RECEIPT_PRINTED: "payment.receipt_printed",
+  PAYMENT_RECEIPT_REPRINTED: "payment.receipt_reprinted",
   GUEST_CHECKED_IN: "guest.checked_in",
   GUEST_CHECKED_OUT: "guest.checked_out",
   ROOM_STATUS_UPDATED: "room.status_updated",

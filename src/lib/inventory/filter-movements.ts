@@ -1,3 +1,4 @@
+import { formatStockMovementReference } from "@/lib/inventory/movement-reference";
 import type {
   StockMovement,
   StockMovementSortDirection,
@@ -17,7 +18,7 @@ function matchesSearch(movement: StockMovement, query: string): boolean {
     (movement.notes ?? "").toLowerCase().includes(normalized) ||
     (movement.performedByName ?? "").toLowerCase().includes(normalized) ||
     (movement.referenceType ?? "").toLowerCase().includes(normalized) ||
-    (movement.referenceId ?? "").toLowerCase().includes(normalized) ||
+    formatStockMovementReference(movement).toLowerCase().includes(normalized) ||
     movement.movementSource.toLowerCase().includes(normalized)
   );
 }

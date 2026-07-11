@@ -422,6 +422,16 @@ export interface DbPaymentTransaction {
   vat_exemption_notes: string | null;
   vat_overridden_by: string | null;
   vat_overridden_at: Timestamp | null;
+  idempotency_key?: string | null;
+  printed_at?: Timestamp | null;
+  last_printed_at?: Timestamp | null;
+  printed_by?: string | null;
+  print_count?: number;
+  can_reverse?: boolean;
+  reversal_reason?: string | null;
+  reversed_by?: string | null;
+  reversed_at?: Timestamp | null;
+  reversal_reference?: string | null;
   created_at: Timestamp;
 }
 

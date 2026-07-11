@@ -376,7 +376,11 @@ export function SettingsPageContent({
               </>
             )}
             <div className="space-y-2">
-              <Label>Currency</Label>
+              <Label>Currency Symbol</Label>
+              <Input value={settings.currencySymbol} onChange={(e) => set("currencySymbol", e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Currency Code</Label>
               <Input value={settings.currency} onChange={(e) => set("currency", e.target.value)} />
             </div>
             <div className="space-y-2">
@@ -404,9 +408,14 @@ export function SettingsPageContent({
               <Input value={settings.invoicePrefix} onChange={(e) => set("invoicePrefix", e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Receipt Prefix</Label>
-              <Input value={settings.receiptPrefix} onChange={(e) => set("receiptPrefix", e.target.value)} />
+              <Label>Invoice Starting Number</Label>
+              <Input type="number" min={1} value={settings.invoiceStartingNumber} onChange={(e) => set("invoiceStartingNumber", Number(e.target.value))} />
             </div>
+            <div className="space-y-2">
+              <Label>Invoice Due Days</Label>
+              <Input type="number" min={0} value={settings.invoiceDueDays} onChange={(e) => set("invoiceDueDays", Number(e.target.value))} />
+            </div>
+            <ToggleRow label="Auto Generate Invoice Number" checked={settings.autoGenerateInvoiceNumber} onChange={(v) => set("autoGenerateInvoiceNumber", v)} />
             <div className="space-y-2 sm:col-span-2">
               <Label>Footer Note</Label>
               <Textarea value={settings.invoiceFooter} onChange={(e) => set("invoiceFooter", e.target.value)} rows={2} />
@@ -414,6 +423,77 @@ export function SettingsPageContent({
             <div className="space-y-2 sm:col-span-2">
               <Label>Terms & Conditions</Label>
               <Textarea value={settings.termsAndConditions} onChange={(e) => set("termsAndConditions", e.target.value)} rows={4} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Receipt Settings</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Receipt Prefix</Label>
+              <Input value={settings.receiptPrefix} onChange={(e) => set("receiptPrefix", e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Receipt Starting Number</Label>
+              <Input type="number" min={1} value={settings.receiptStartingNumber} onChange={(e) => set("receiptStartingNumber", Number(e.target.value))} />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Receipt Header Message</Label>
+              <Input value={settings.receiptHeaderMessage} onChange={(e) => set("receiptHeaderMessage", e.target.value)} />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Receipt Footer Message</Label>
+              <Textarea value={settings.receiptFooterMessage} onChange={(e) => set("receiptFooterMessage", e.target.value)} rows={2} />
+            </div>
+            <ToggleRow label="Show Hotel Logo" checked={settings.showHotelLogo} onChange={(v) => set("showHotelLogo", v)} />
+            <ToggleRow label="Show QR Code" checked={settings.showQrCode} onChange={(v) => set("showQrCode", v)} />
+            <ToggleRow label="Print Thank You Message" checked={settings.printThankYouMessage} onChange={(v) => set("printThankYouMessage", v)} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Printing</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Paper Size</Label>
+              <select
+                value={settings.paperSize}
+                onChange={(e) => set("paperSize", e.target.value as HotelSettings["paperSize"])}
+                className={selectClass}
+              >
+                <option value="a4">A4</option>
+                <option value="thermal_80mm">Thermal 80mm</option>
+                <option value="thermal_58mm">Thermal 58mm</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Default Printer Mode</Label>
+              <select
+                value={settings.defaultPrinterMode}
+                onChange={(e) => set("defaultPrinterMode", e.target.value as HotelSettings["defaultPrinterMode"])}
+                className={selectClass}
+              >
+                <option value="browser">Browser Print Dialog</option>
+              </select>
+            </div>
+            <ToggleRow label="Auto Print After Payment" checked={settings.autoPrintAfterPayment} onChange={(v) => set("autoPrintAfterPayment", v)} />
+            <ToggleRow label="Ask Before Printing" checked={settings.askBeforePrinting} onChange={(v) => set("askBeforePrinting", v)} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Branding & Registration</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Registration Number</Label>
+              <Input value={settings.registrationNumber} onChange={(e) => set("registrationNumber", e.target.value)} />
             </div>
           </CardContent>
         </Card>

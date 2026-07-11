@@ -53,6 +53,41 @@ export class SupabaseGuestRepository implements IGuestRepository {
     return data;
   }
 
+  async findByPhone(phone: string): Promise<DbGuest | null> {
+    const trimmed = phone.trim();
+    if (!trimmed) return null;
+
+    const { data, error } = await this.client
+      .from("guests")
+      .select("*")
+      .eq("phone", trimmed)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to find guest by phone: ${error.message}`);
+    }
+
+    if (data) return data;
+
+    const digits = trimmed.replace(/\D/g, "");
+    if (!digits) return null;
+
+    const { data: candidates, error: listError } = await this.client
+      .from("guests")
+      .select("*")
+      .not("phone", "is", null);
+
+    if (listError) {
+      throw new Error(`Failed to find guest by phone: ${listError.message}`);
+    }
+
+    return (
+      (candidates ?? []).find(
+        (row) => row.phone && row.phone.replace(/\D/g, "") === digits
+      ) ?? null
+    );
+  }
+
   async create(
     data: Omit<DbGuest, "id" | "created_at" | "updated_at" | "total_visits" | "total_spent">
   ): Promise<DbGuest> {

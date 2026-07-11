@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
+import { useBranding } from "@/components/branding/BrandingProvider";
 import { SubmitButton } from "@/components/loading/SubmitButton";
 import { PaymentChargeSummary } from "@/components/payments/PaymentChargeSummary";
 import { PaymentTaxSection } from "@/components/payments/PaymentTaxSection";
@@ -33,10 +34,17 @@ import {
   buildSettlementFromReservation,
   getReservationChargeBase,
 } from "@/lib/payments/payment-settlement";
+import {
+  buildRoomPaymentReceiptDraft,
+  printRoomPaymentReceiptDraft,
+} from "@/lib/payments/room-payment-receipt-draft";
 import { computeTransactionVatFields } from "@/lib/payments/vat";
+import { hotelContact } from "@/config/hotel-contact";
+import { formatCurrency } from "@/lib/utils";
 import {
   PAYMENT_METHOD_OPTIONS,
   type PaymentFormValues,
+  type TransactionPaymentMethod,
 } from "@/types/payment";
 import type { Guest } from "@/types/guest";
 import type { Reservation } from "@/types/reservation";
@@ -72,6 +80,89 @@ function buildInitial(defaultVatApplied: boolean): PaymentFormValues {
 const selectClass =
   "flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
+type SplitPaymentRow = {
+  method: TransactionPaymentMethod;
+  amount: number;
+};
+
+function SplitPaymentEditor({
+  rows,
+  onChange,
+  disabled,
+}: {
+  rows: SplitPaymentRow[];
+  onChange: (rows: SplitPaymentRow[]) => void;
+  disabled?: boolean;
+}) {
+  const tenderMethods = PAYMENT_METHOD_OPTIONS.filter(
+    (o) => o.value !== "mixed" && o.value !== "online"
+  );
+
+  return (
+    <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+      <p className="text-sm font-medium">Split Payment</p>
+      {rows.map((row, index) => (
+        <div key={index} className="grid grid-cols-[1fr_120px_auto] gap-2">
+          <select
+            value={row.method}
+            disabled={disabled}
+            onChange={(e) => {
+              const next = [...rows];
+              next[index] = {
+                ...next[index],
+                method: e.target.value as TransactionPaymentMethod,
+              };
+              onChange(next);
+            }}
+            className={selectClass}
+          >
+            {tenderMethods.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            disabled={disabled}
+            value={row.amount || ""}
+            onChange={(e) => {
+              const next = [...rows];
+              next[index] = {
+                ...next[index],
+                amount: roundCurrency(Number(e.target.value) || 0),
+              };
+              onChange(next);
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled || rows.length <= 1}
+            onClick={() => onChange(rows.filter((_, i) => i !== index))}
+          >
+            Remove
+          </Button>
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={disabled}
+        onClick={() =>
+          onChange([...rows, { method: "cash", amount: 0 }])
+        }
+      >
+        Add Tender
+      </Button>
+    </div>
+  );
+}
+
 export function RecordPaymentModal({
   open,
   onOpenChange,
@@ -85,8 +176,16 @@ export function RecordPaymentModal({
 }: Props) {
   const toast = useToast();
   const refresh = useLiveRefresh();
+  const branding = useBranding();
   const [guestFilterId, setGuestFilterId] = useState("");
   const [values, setValues] = useState(() => buildInitial(defaultVatApplied));
+  const [splitRows, setSplitRows] = useState<SplitPaymentRow[]>([
+    { method: "cash", amount: 0 },
+    { method: "mobile_money", amount: 0 },
+  ]);
+  const [pendingReceipt, setPendingReceipt] = useState<ReturnType<
+    typeof buildRoomPaymentReceiptDraft
+  > | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const idempotencyKeyRef = useRef<string>("");
@@ -119,11 +218,13 @@ export function RecordPaymentModal({
   const settlement = useMemo(() => {
     if (!selectedReservation) return null;
     const folio = folioSettlements[selectedReservation.id];
+    const suppress = { suppressPaymentProjection: true as const };
     if (folio) {
       return buildPaymentSettlementFromFolio(
         selectedReservation,
         folio,
-        values.amount
+        values.amount,
+        suppress
       );
     }
     return buildSettlementFromReservation(
@@ -134,6 +235,7 @@ export function RecordPaymentModal({
       {
         lockedTotalDue: continuingPayment?.totalDue,
         amountPaid: continuingPayment?.amountPaid ?? selectedReservation.amountPaid,
+        suppressPaymentProjection: true,
       }
     );
   }, [
@@ -148,6 +250,11 @@ export function RecordPaymentModal({
   function resetForm() {
     setGuestFilterId("");
     setValues(buildInitial(defaultVatApplied));
+    setSplitRows([
+      { method: "cash", amount: 0 },
+      { method: "mobile_money", amount: 0 },
+    ]);
+    setPendingReceipt(null);
     setError(null);
   }
 
@@ -156,29 +263,6 @@ export function RecordPaymentModal({
       resetForm();
     }
     onOpenChange(next);
-  }
-
-  function buildSettlementForReservation(
-    reservation: Reservation,
-    nextVatApplied: boolean
-  ) {
-    const folio = folioSettlements[reservation.id];
-    if (folio) {
-      return buildPaymentSettlementFromFolio(reservation, folio, 0);
-    }
-    const partial = partialPayments.find(
-      (p) => p.reservationId === reservation.id
-    );
-    return buildSettlementFromReservation(
-      reservation,
-      defaultTaxRate,
-      nextVatApplied,
-      0,
-      {
-        lockedTotalDue: partial?.totalDue,
-        amountPaid: partial?.amountPaid ?? reservation.amountPaid,
-      }
-    );
   }
 
   function handleReservationChange(reservationId: string) {
@@ -197,7 +281,6 @@ export function RecordPaymentModal({
     if (!reservation) return;
 
     const partial = partialPayments.find((p) => p.reservationId === reservationId);
-    const draft = buildSettlementForReservation(reservation, defaultVatApplied);
 
     setGuestFilterId(reservation.guestId);
     setValues((v) => ({
@@ -208,31 +291,45 @@ export function RecordPaymentModal({
       vatApplied: defaultVatApplied,
       vatExemptionReason: "",
       vatExemptionNotes: "",
-      amount: draft.outstandingBalance,
+      amount: 0,
+      method: "cash",
     }));
+    setSplitRows([
+      { method: "cash", amount: 0 },
+      { method: "mobile_money", amount: 0 },
+    ]);
   }
 
   function handleVatChange(patch: Partial<PaymentFormValues>) {
-    if (!selectedReservation) {
-      setValues((v) => ({ ...v, ...patch }));
-      return;
-    }
+    setValues((v) => ({ ...v, ...patch }));
+  }
 
-    const nextVatApplied = patch.vatApplied ?? vatApplied;
-    const draft = buildSettlementForReservation(
-      selectedReservation,
-      nextVatApplied
+  function applySplitTotalToAmount(rows: SplitPaymentRow[]) {
+    const total = roundCurrency(
+      rows.reduce((sum, row) => sum + Math.max(0, row.amount), 0)
     );
+    setValues((v) => ({ ...v, amount: total, method: "mixed" }));
+  }
 
-    setValues((v) => ({
-      ...v,
-      ...patch,
-      vatApplied: nextVatApplied,
-      amount:
-        patch.vatApplied !== undefined
-          ? draft.outstandingBalance
-          : v.amount,
-    }));
+  function buildSplitNotes(rows: SplitPaymentRow[]): string {
+    const parts = rows
+      .filter((row) => row.amount > 0)
+      .map(
+        (row) =>
+          `${PAYMENT_METHOD_OPTIONS.find((o) => o.value === row.method)?.label ?? row.method} ${formatCurrency(row.amount)}`
+      );
+    return parts.length ? `Split payment: ${parts.join(", ")}` : "";
+  }
+
+  function buildReceiptBranding() {
+    return {
+      hotelName: branding?.hotelName,
+      logoUrl: branding?.logoUrl,
+      primaryColor: branding?.primaryColor,
+      address: hotelContact.address,
+      phone: hotelContact.phoneDisplay,
+      thankYouMessage: "Thank you for staying with us!",
+    };
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -285,11 +382,16 @@ export function RecordPaymentModal({
       chargeBase
     );
 
+    const splitNote =
+      values.method === "mixed" ? buildSplitNotes(splitRows) : "";
+    const mergedNotes = [values.notes.trim(), splitNote].filter(Boolean).join("\n");
+
     const payload: PaymentFormValues = {
       ...values,
       guestId: selectedReservation.guestId,
       reservationId: selectedReservation.id,
       amount: requestedAmount,
+      notes: mergedNotes,
       vatApplied,
       vatRate: vatApplied ? defaultTaxRate : 0,
       vatAmount,
@@ -299,7 +401,19 @@ export function RecordPaymentModal({
     startTransition(async () => {
       const result = await recordPaymentAction(payload);
       if (result.success) {
-        handleClose(false);
+        const receipt = buildRoomPaymentReceiptDraft(
+          settlement,
+          selectedReservation,
+          {
+            amount: requestedAmount,
+            method: values.method,
+            receiptNumber:
+              result.receiptNumber ?? selectedReservation.reservationNumber,
+            balanceAfter: result.balanceAfter,
+            notes: mergedNotes || undefined,
+          }
+        );
+        setPendingReceipt(receipt);
         if (continuingPayment) {
           toast.celebrate(
             "Payment Continued",
@@ -314,6 +428,13 @@ export function RecordPaymentModal({
         toast.error(result.error);
       }
     });
+  }
+
+  function finishAfterReceipt(print: boolean) {
+    if (print && pendingReceipt) {
+      printRoomPaymentReceiptDraft(pendingReceipt, buildReceiptBranding());
+    }
+    handleClose(false);
   }
 
   const guestLabel =
@@ -334,6 +455,30 @@ export function RecordPaymentModal({
               : "Select a reservation — guest and charges are loaded automatically."}
           </DialogDescription>
         </DialogHeader>
+        {pendingReceipt ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Payment recorded successfully. Print a room payment receipt for the
+              guest, or skip printing.
+            </p>
+            <div className="rounded-lg border bg-muted/30 p-4 text-sm">
+              <p className="font-medium">{pendingReceipt.receiptNumber}</p>
+              <p>{pendingReceipt.guestName}</p>
+              <p className="text-muted-foreground">
+                {formatCurrency(pendingReceipt.amountPaid)} ·{" "}
+                {pendingReceipt.paymentMethod}
+              </p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => finishAfterReceipt(false)}>
+                Skip
+              </Button>
+              <Button type="button" onClick={() => finishAfterReceipt(true)}>
+                Print Receipt
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label>Filter by Guest (optional)</Label>
@@ -389,36 +534,88 @@ export function RecordPaymentModal({
             </div>
           ) : null}
 
-          {settlement ? <PaymentChargeSummary settlement={settlement} /> : null}
+          {settlement ? (
+            <PaymentChargeSummary
+              settlement={settlement}
+              collectionAmount={values.amount}
+            />
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label>Payment Amount</Label>
-              <Input
-                type="number"
-                min={0.01}
-                step="0.01"
-                required
-                disabled={!settlement}
-                value={values.amount || ""}
-                onChange={(e) =>
-                  setValues((v) => ({
-                    ...v,
-                    amount: roundCurrency(Number(e.target.value) || 0),
-                  }))
-                }
-              />
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  required
+                  disabled={!settlement}
+                  className="min-w-[140px] flex-1"
+                  value={values.amount || ""}
+                  onChange={(e) =>
+                    setValues((v) => ({
+                      ...v,
+                      amount: roundCurrency(Number(e.target.value) || 0),
+                      method:
+                        v.method === "mixed" && Number(e.target.value) > 0
+                          ? "cash"
+                          : v.method,
+                    }))
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!settlement}
+                  onClick={() =>
+                    setValues((v) => ({
+                      ...v,
+                      amount: settlement?.outstandingBalance ?? 0,
+                    }))
+                  }
+                >
+                  Collect Full Balance
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!settlement}
+                  onClick={() =>
+                    setValues((v) => ({
+                      ...v,
+                      amount: roundCurrency(
+                        (settlement?.outstandingBalance ?? 0) * 0.5
+                      ),
+                    }))
+                  }
+                >
+                  Collect 50%
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!settlement}
+                  onClick={() => setValues((v) => ({ ...v, amount: 0 }))}
+                >
+                  Clear
+                </Button>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Payment Method</Label>
               <select
                 value={values.method}
-                onChange={(e) =>
-                  setValues((v) => ({
-                    ...v,
-                    method: e.target.value as PaymentFormValues["method"],
-                  }))
-                }
+                onChange={(e) => {
+                  const method = e.target.value as PaymentFormValues["method"];
+                  setValues((v) => ({ ...v, method }));
+                  if (method === "mixed") {
+                    applySplitTotalToAmount(splitRows);
+                  }
+                }}
                 className={selectClass}
               >
                 {PAYMENT_METHOD_OPTIONS.map((o) => (
@@ -429,6 +626,16 @@ export function RecordPaymentModal({
               </select>
             </div>
           </div>
+
+          {values.method === "mixed" ? (
+            <SplitPaymentEditor
+              rows={splitRows}
+              onChange={(rows) => {
+                setSplitRows(rows);
+                applySplitTotalToAmount(rows);
+              }}
+            />
+          ) : null}
 
           {settlement ? (
             <PaymentTaxSection
@@ -481,6 +688,7 @@ export function RecordPaymentModal({
             </SubmitButton>
           </DialogFooter>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   );

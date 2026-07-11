@@ -156,19 +156,16 @@ export class SupabaseInvoiceRepository implements IInvoiceRepository {
   }
 
   async getNextInvoiceNumber(): Promise<string> {
-    const year = new Date().getFullYear();
-    const prefix = `INV-${year}-`;
-
-    const { count, error } = await this.client
-      .from("invoices")
-      .select("*", { count: "exact", head: true })
-      .like("invoice_number", `${prefix}%`);
+    const { data, error } = await this.client.rpc("next_invoice_number_locked");
 
     if (error) {
       throw new Error(`Failed to generate invoice number: ${error.message}`);
     }
 
-    const seq = String((count ?? 0) + 1).padStart(4, "0");
-    return `${prefix}${seq}`;
+    if (typeof data !== "string" || !data.trim()) {
+      throw new Error("Failed to generate invoice number: empty response");
+    }
+
+    return data;
   }
 }

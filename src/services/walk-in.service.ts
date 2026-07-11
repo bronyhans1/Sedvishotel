@@ -2,6 +2,7 @@ import { getWalkInAccess } from "@/lib/auth/walk-in-access";
 import { computeVatOnBase, computeInvoiceTotal } from "@/lib/payments/payment-settlement";
 import { buildProgrammaticPaymentIdempotencyKey } from "@/lib/payments/atomic-commit";
 import { resolvePaymentTransactionVat } from "@/lib/payments/resolve-vat";
+import { resolvePaymentStatusFromTotals } from "@/lib/payments/totals";
 import { roundCurrency } from "@/lib/payments/currency";
 import { normalizeRoomNumber } from "@/lib/rooms/floor-layout";
 import type { IActivityLogRepository } from "@/repositories/activity-log.repository";
@@ -41,10 +42,12 @@ function resolvePaymentStatus(
   totalDue: number,
   amountPaid: number
 ): DbPaymentStatus {
-  const balance = Math.max(0, totalDue - amountPaid);
-  if (balance <= 0) return "paid";
-  if (amountPaid > 0) return "partial";
-  return "pending";
+  return resolvePaymentStatusFromTotals(totalDue, {
+    totalPaid: amountPaid,
+    totalRefunded: 0,
+    netPaid: amountPaid,
+    maxRefundable: Math.max(0, amountPaid),
+  });
 }
 
 export class WalkInService implements IWalkInService {
@@ -174,6 +177,7 @@ export class WalkInService implements IWalkInService {
     let guestId: string;
     let guestCreated = false;
     const email = values.email.trim();
+    const phone = values.phone.trim();
 
     if (email) {
       const existing = await this.guests.findByEmail(email);
@@ -181,7 +185,66 @@ export class WalkInService implements IWalkInService {
         guestId = existing.id;
         await this.guests.update(guestId, {
           full_name: values.fullName.trim(),
-          phone: values.phone.trim() || null,
+          phone: phone || null,
+          nationality: values.nationality.trim() || null,
+          id_type: values.idType,
+          id_number: values.idNumber.trim() || null,
+          guest_status: "in_house",
+        });
+      } else if (phone) {
+        const existingByPhone = await this.guests.findByPhone(phone);
+        if (existingByPhone) {
+          guestId = existingByPhone.id;
+          await this.guests.update(guestId, {
+            full_name: values.fullName.trim(),
+            phone,
+            email,
+            nationality: values.nationality.trim() || null,
+            id_type: values.idType,
+            id_number: values.idNumber.trim() || null,
+            guest_status: "in_house",
+          });
+        } else {
+          const created = await this.guests.create({
+            full_name: values.fullName.trim(),
+            phone,
+            email,
+            nationality: values.nationality.trim() || null,
+            id_type: values.idType,
+            id_number: values.idNumber.trim() || null,
+            address: "Walk-in registration",
+            guest_status: "in_house",
+            vip_status: false,
+            notes: ["Walk-in guest"],
+            document_urls: [],
+          });
+          guestId = created.id;
+          guestCreated = true;
+        }
+      } else {
+        const created = await this.guests.create({
+          full_name: values.fullName.trim(),
+          phone: null,
+          email,
+          nationality: values.nationality.trim() || null,
+          id_type: values.idType,
+          id_number: values.idNumber.trim() || null,
+          address: "Walk-in registration",
+          guest_status: "in_house",
+          vip_status: false,
+          notes: ["Walk-in guest"],
+          document_urls: [],
+        });
+        guestId = created.id;
+        guestCreated = true;
+      }
+    } else if (phone) {
+      const existingByPhone = await this.guests.findByPhone(phone);
+      if (existingByPhone) {
+        guestId = existingByPhone.id;
+        await this.guests.update(guestId, {
+          full_name: values.fullName.trim(),
+          phone,
           nationality: values.nationality.trim() || null,
           id_type: values.idType,
           id_number: values.idNumber.trim() || null,
@@ -190,8 +253,8 @@ export class WalkInService implements IWalkInService {
       } else {
         const created = await this.guests.create({
           full_name: values.fullName.trim(),
-          phone: values.phone.trim() || null,
-          email,
+          phone,
+          email: null,
           nationality: values.nationality.trim() || null,
           id_type: values.idType,
           id_number: values.idNumber.trim() || null,

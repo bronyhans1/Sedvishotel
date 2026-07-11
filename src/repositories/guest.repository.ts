@@ -5,6 +5,7 @@ export interface IGuestRepository {
   getAll(includeArchived?: boolean): Promise<DbGuest[]>;
   getById(id: string): Promise<DbGuest | null>;
   findByEmail(email: string): Promise<DbGuest | null>;
+  findByPhone(phone: string): Promise<DbGuest | null>;
   create(
     data: Omit<DbGuest, "id" | "created_at" | "updated_at" | "total_visits" | "total_spent">
   ): Promise<DbGuest>;

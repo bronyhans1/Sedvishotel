@@ -9,8 +9,27 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
 import type { Invoice } from "@/types/invoice";
+import type { HotelSettings } from "@/types/settings";
 
-export function InvoiceDetailsContent({ invoice }: { invoice: Invoice }) {
+type DocumentSettings = Pick<
+  HotelSettings,
+  | "address"
+  | "phone"
+  | "email"
+  | "website"
+  | "tinNumber"
+  | "taxRate"
+  | "invoiceFooter"
+  | "termsAndConditions"
+>;
+
+export function InvoiceDetailsContent({
+  invoice,
+  documentSettings,
+}: {
+  invoice: Invoice;
+  documentSettings?: DocumentSettings;
+}) {
   const searchParams = useSearchParams();
   const showPrint = searchParams.get("print") === "1";
 
@@ -21,7 +40,7 @@ export function InvoiceDetailsContent({ invoice }: { invoice: Invoice }) {
           <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
           <Button variant="outline" asChild><Link href={`/dashboard/invoices/${invoice.id}`}>Back to details</Link></Button>
         </div>
-        <InvoicePrintPreview invoice={invoice} />
+        <InvoicePrintPreview invoice={invoice} documentSettings={documentSettings} />
       </div>
     );
   }

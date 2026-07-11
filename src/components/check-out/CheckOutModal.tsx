@@ -84,6 +84,7 @@ export function CheckOutModal({
     setVatExemptionReason("");
     setVatExemptionNotes("");
     setPaymentMethod("cash");
+    setPaymentAmount(0);
     setError("");
   }, [open, reservation?.id, defaultVatApplied]);
 
@@ -93,14 +94,16 @@ export function CheckOutModal({
       return buildPaymentSettlementFromFolio(
         reservation,
         folioSettlement,
-        paymentAmount
+        paymentAmount,
+        { suppressPaymentProjection: true }
       );
     }
     return buildSettlementFromReservation(
       reservation,
       defaultTaxRate,
       vatApplied,
-      paymentAmount
+      paymentAmount,
+      { suppressPaymentProjection: true }
     );
   }, [
     reservation,
@@ -109,11 +112,6 @@ export function CheckOutModal({
     paymentAmount,
     folioSettlement,
   ]);
-
-  useEffect(() => {
-    if (!settlement) return;
-    setPaymentAmount(settlement.outstandingBalance);
-  }, [vatApplied, reservation?.id]);
 
   function handleClose(next: boolean) {
     if (!next) {
@@ -225,10 +223,45 @@ export function CheckOutModal({
           </p>
         </div>
 
-        <PaymentChargeSummary settlement={settlement} />
+        <PaymentChargeSummary
+          settlement={settlement}
+          collectionAmount={paymentAmount}
+        />
 
         {needsPayment ? (
           <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setPaymentAmount(roundCurrency(settlement.outstandingBalance))
+                }
+              >
+                Collect Full Balance
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setPaymentAmount(
+                    roundCurrency(settlement.outstandingBalance * 0.5)
+                  )
+                }
+              >
+                Collect 50%
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPaymentAmount(0)}
+              >
+                Clear
+              </Button>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Payment Amount</Label>

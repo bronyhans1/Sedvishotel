@@ -21,12 +21,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function GuestDetailsPage({ params }: Props) {
   const { id } = await params;
-  const { guest, access, guestReservations } = await loadGuestDetail(id);
+  const { guest, access, guestReservations, profileInsights } = await loadGuestDetail(id);
   return (
     <GuestDetailsContent
       guest={guest}
       access={access}
       guestReservations={guestReservations}
+      profileInsights={profileInsights}
     />
   );
 }

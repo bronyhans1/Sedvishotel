@@ -6,6 +6,7 @@ import { getGuestAccess } from "@/lib/auth/guest-access";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
 import { computeGuestStats } from "@/lib/guests/stats";
 import { getGuestService } from "@/lib/guests/get-guest-service";
+import { getReservationService } from "@/lib/reservations/get-reservation-service";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export async function loadGuestsPageData() {
@@ -20,9 +21,19 @@ export async function loadGuestsPageData() {
     redirect(ACCESS_DENIED_PATH);
   }
 
-  const service = await getGuestService();
-  const guests = await service.listGuests(ctx, session);
-  const stats = computeGuestStats(guests);
+  const guestService = await getGuestService();
+  const reservationService = await getReservationService();
+
+  const [guests, todayEvents] = await Promise.all([
+    guestService.listGuests(ctx, session),
+    reservationService.getTodayStayEventCounts(ctx, session),
+  ]);
+
+  const stats = computeGuestStats({
+    guests,
+    checkInsToday: todayEvents.checkInsToday,
+    checkOutsToday: todayEvents.checkOutsToday,
+  });
 
   return { guests, stats, access };
 }

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { hotelContact } from "@/config/hotel-contact";
+import { hotelInformation } from "@/config/hotel-information";
 import { hotelPolicies } from "@/config/hotel-policies";
 import { useToast } from "@/hooks/use-toast";
 import { publicImages } from "@/lib/public/images";
@@ -53,12 +54,16 @@ export function ContactPageContent() {
                 <p className="text-sm font-medium uppercase tracking-[0.24em] text-brand-gold">
                   Contact Information
                 </p>
-                <h3 className="mt-4 font-serif text-2xl font-bold">SEDVIS HOTEL</h3>
-                <p className="mt-2 text-sm text-muted-foreground">Ho, Volta Region, Ghana</p>
+                <h3 className="mt-4 font-serif text-2xl font-bold">{hotelContact.name}</h3>
+                <p className="mt-2 whitespace-pre-line text-sm text-muted-foreground">
+                  {hotelContact.addressLines.slice(1).join("\n")}
+                </p>
                 <ul className="mt-6 space-y-4 text-sm">
                   <li className="flex gap-3">
                     <MapPin className="h-5 w-5 shrink-0 text-brand-gold" />
-                    <span>{hotelContact.address}</span>
+                    <span className="whitespace-pre-line">
+                      {hotelContact.addressLines.join("\n")}
+                    </span>
                   </li>
                   <li className="flex gap-3">
                     <Phone className="h-5 w-5 shrink-0 text-brand-gold" />
@@ -68,8 +73,11 @@ export function ContactPageContent() {
                   </li>
                   <li className="flex gap-3">
                     <Mail className="h-5 w-5 shrink-0 text-brand-gold" />
-                    <a href={`mailto:${hotelContact.generalEmail}`} className="hover:text-brand-gold">
-                      {hotelContact.generalEmail}
+                    <a
+                      href={`mailto:${hotelContact.reservationsEmail}`}
+                      className="hover:text-brand-gold"
+                    >
+                      {hotelContact.reservationsEmail}
                     </a>
                   </li>
                 </ul>
@@ -83,7 +91,7 @@ export function ContactPageContent() {
                 </p>
                 <p className="mt-4 text-sm text-muted-foreground">
                   <span className="font-medium text-foreground">Response time:</span>{" "}
-                  We aim to respond to enquiries as promptly as possible.
+                  {hotelContact.responseTime}
                 </p>
               </div>
             </ScrollReveal>
@@ -100,16 +108,15 @@ export function ContactPageContent() {
                   <div className="relative flex min-h-64 flex-col items-center justify-center px-6 py-12 text-center sm:min-h-72">
                     <MapPin className="h-10 w-10 text-brand-gold" />
                     <h3 className="mt-4 font-serif text-2xl font-bold text-white sm:text-3xl">
-                      SEDVIS HOTEL
+                      {hotelContact.name}
                     </h3>
-                    <p className="mt-2 text-sm font-medium uppercase tracking-[0.2em] text-brand-gold/90">
-                      Ho, Volta Region, Ghana
+                    <p className="mt-2 whitespace-pre-line text-sm font-medium uppercase tracking-[0.2em] text-brand-gold/90">
+                      {hotelContact.addressLines.slice(1).join("\n")}
                     </p>
                     <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/85 sm:text-base">
-                      Conveniently located in the heart of Ho, offering comfortable accommodations
-                      and warm hospitality.
+                      {hotelInformation.description}
                     </p>
-                    <p className="mt-6 text-xs text-white/60">Map and directions coming soon.</p>
+                    <p className="mt-6 text-xs text-white/60"></p>
                   </div>
                 </div>
                 <div className="rounded-3xl border bg-card p-6 shadow-sm sm:col-span-2 lg:col-span-2">

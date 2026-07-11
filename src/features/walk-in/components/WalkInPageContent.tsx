@@ -24,12 +24,15 @@ import type { WalkInAccess } from "@/lib/auth/walk-in-access.types";
 import { getTodayDateString } from "@/lib/dates/today";
 import { buildPaymentSettlement } from "@/lib/payments/payment-settlement";
 import { roundCurrency } from "@/lib/payments/currency";
+import { BookingPaymentLifecycleBadge } from "@/components/payments/BookingPaymentLifecycleBadge";
 import { PaymentChargeSummary } from "@/components/payments/PaymentChargeSummary";
 import { PaymentTaxSection } from "@/components/payments/PaymentTaxSection";
 import { formatCurrency, nightsBetween } from "@/lib/utils";
 import { siteConfig } from "@/config/site";
+import { BOOKING_PAYMENT_POLICY_OPTIONS } from "@/types/booking-payment";
 import { ID_TYPE_OPTIONS, type IdType } from "@/types/guest";
 import { PAYMENT_METHOD_OPTIONS, type TransactionPaymentMethod } from "@/types/payment";
+import type { BookingPaymentPolicy } from "@/types/booking-payment";
 import type { WalkInFormValues, WalkInRoomOption } from "@/types/walk-in";
 
 const selectClass =
@@ -76,6 +79,7 @@ const initial: FormState = {
   discount: 0,
   guestsCount: 1,
   paymentMethod: "cash",
+  paymentPolicy: "collect_now",
   amountPaid: 0,
   paymentNotes: "",
   vatApplied: true,
@@ -148,6 +152,7 @@ export function WalkInPageContent({
   const [success, setSuccess] = useState<{
     guestId: string;
     reservationId: string;
+    paymentRecorded: boolean;
   } | null>(null);
   const [isPending, startTransition] = useTransition();
   const [loadingRooms, startRoomTransition] = useTransition();
@@ -179,7 +184,7 @@ export function WalkInPageContent({
     selectedRoom && nights > 0 ? selectedRoom.price * nights : 0;
   const vatApplied = form.vatApplied ?? defaultVatApplied;
 
-  const settlement = useMemo(
+  const pricingSettlement = useMemo(
     () =>
       buildPaymentSettlement({
         guestName: form.fullName,
@@ -190,13 +195,13 @@ export function WalkInPageContent({
         vatRate: defaultTaxRate,
         vatApplied,
         amountPaid: 0,
-        paymentAmount: form.amountPaid,
+        paymentAmount: 0,
+        suppressPaymentProjection: true,
       }),
     [
       form.fullName,
       form.roomNumber,
       form.discount,
-      form.amountPaid,
       selectedRoom,
       subtotal,
       defaultTaxRate,
@@ -204,17 +209,44 @@ export function WalkInPageContent({
     ]
   );
 
-  const total = settlement.totalDue;
-  const balance = settlement.remainingAfterPayment;
+  const paymentSettlement = useMemo(() => {
+    if (step < 4) return pricingSettlement;
+    return buildPaymentSettlement({
+      guestName: form.fullName,
+      roomNumber: form.roomNumber,
+      roomCategory: selectedRoom?.roomType,
+      chargeBase: subtotal,
+      discount: form.discount,
+      vatRate: defaultTaxRate,
+      vatApplied,
+      amountPaid: 0,
+      paymentAmount: form.amountPaid,
+      suppressPaymentProjection: true,
+    });
+  }, [
+    step,
+    pricingSettlement,
+    form.fullName,
+    form.roomNumber,
+    form.discount,
+    form.amountPaid,
+    selectedRoom,
+    subtotal,
+    defaultTaxRate,
+    vatApplied,
+  ]);
 
-  useEffect(() => {
-    if (step !== 4) return;
-    setForm((f) => ({ ...f, amountPaid: settlement.outstandingBalance }));
-  }, [vatApplied, settlement.totalDue, step]);
+  const total = pricingSettlement.totalDue;
+  const draftAmountPaid = step >= 4 ? roundCurrency(form.amountPaid) : 0;
+  const balance =
+    step >= 3 && selectedRoom
+      ? roundCurrency(Math.max(0, total - draftAmountPaid))
+      : null;
 
   const summary = useMemo(
     () =>
       buildWalkInSummaryData({
+        wizardStep: step,
         fullName: form.fullName,
         phone: form.phone,
         roomNumber: form.roomNumber,
@@ -224,19 +256,20 @@ export function WalkInPageContent({
         nights,
         total,
         amountPaid: form.amountPaid,
-        balance,
+        paymentPolicy: form.paymentPolicy,
       }),
     [
+      step,
       form.fullName,
       form.phone,
       form.roomNumber,
       form.checkInDate,
       form.checkOutDate,
       form.amountPaid,
+      form.paymentPolicy,
       selectedRoom,
       nights,
       total,
-      balance,
     ]
   );
 
@@ -252,6 +285,7 @@ export function WalkInPageContent({
       checkInDate: form.checkInDate,
       checkOutDate: form.checkOutDate,
       paymentMethod: form.paymentMethod,
+      paymentPolicy: form.paymentPolicy,
       amountPaid: roundCurrency(form.amountPaid),
       discount: form.discount,
       paymentNotes: form.paymentNotes,
@@ -273,6 +307,12 @@ export function WalkInPageContent({
     if (currentStep === 3) return Boolean(form.roomNumber);
     if (currentStep === 4) {
       if (form.amountPaid < 0) return false;
+      if (
+        form.paymentPolicy === "collect_now" &&
+        form.amountPaid > total
+      ) {
+        return false;
+      }
       if (!vatApplied && defaultTaxRate > 0 && !form.vatExemptionReason?.trim()) {
         return false;
       }
@@ -301,6 +341,7 @@ export function WalkInPageContent({
         setSuccess({
           guestId: result.guestId,
           reservationId: result.reservationId,
+          paymentRecorded: draftAmountPaid > 0,
         });
       } else {
         setError(result.error);
@@ -319,7 +360,7 @@ export function WalkInPageContent({
             <ul className="mx-auto mt-4 max-w-xs space-y-1 text-left text-sm text-muted-foreground">
               <li>✓ Guest created</li>
               <li>✓ Reservation created</li>
-              <li>✓ Payment recorded</li>
+              {success.paymentRecorded ? <li>✓ Payment recorded</li> : null}
               <li>✓ Guest checked in</li>
               <li>✓ Room marked occupied</li>
             </ul>
@@ -635,6 +676,34 @@ export function WalkInPageContent({
                           }
                         />
                       </WizardField>
+                      <WizardField label="Payment Policy" fullWidth>
+                        <select
+                          value={form.paymentPolicy}
+                          onChange={(e) => {
+                            const next = e.target.value as BookingPaymentPolicy;
+                            setForm((f) => ({
+                              ...f,
+                              paymentPolicy: next,
+                              amountPaid:
+                                next === "collect_now" ? f.amountPaid : 0,
+                            }));
+                          }}
+                          className={selectClass}
+                        >
+                          {BOOKING_PAYMENT_POLICY_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-muted-foreground">
+                          {
+                            BOOKING_PAYMENT_POLICY_OPTIONS.find(
+                              (o) => o.value === form.paymentPolicy
+                            )?.description
+                          }
+                        </p>
+                      </WizardField>
                     </div>
                   </>
                 )}
@@ -642,7 +711,35 @@ export function WalkInPageContent({
                 {step === 4 && (
                   <>
                     <h3 className="font-semibold">Payment</h3>
-                    <PaymentChargeSummary settlement={settlement} />
+                    <PaymentChargeSummary
+                      settlement={paymentSettlement}
+                      collectionAmount={form.amountPaid}
+                      paymentPolicy={form.paymentPolicy}
+                    />
+                    {form.paymentPolicy === "company_billing" ? (
+                      <div className="rounded-lg border bg-muted/30 p-4 text-sm">
+                        <p className="font-medium">Payment handled by company account.</p>
+                        <p className="text-muted-foreground">
+                          Amount to Collect: {formatCurrency(0)}
+                        </p>
+                      </div>
+                    ) : form.paymentPolicy === "complimentary" ? (
+                      <div className="rounded-lg border bg-muted/30 p-4 text-sm">
+                        <p className="font-medium">Complimentary stay</p>
+                        <p className="text-muted-foreground">
+                          No payment required. A zero-value folio will be generated on
+                          completion.
+                        </p>
+                      </div>
+                    ) : form.paymentPolicy === "pay_at_check_out" ? (
+                      <div className="rounded-lg border bg-muted/30 p-4 text-sm">
+                        <p className="font-medium">Pay at Check-Out</p>
+                        <p className="text-muted-foreground">
+                          No payment is required now. Full balance remains on the guest
+                          folio until departure.
+                        </p>
+                      </div>
+                    ) : (
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <WizardField label="Payment Amount">
                         <Input
@@ -693,10 +790,11 @@ export function WalkInPageContent({
                         />
                       </WizardField>
                     </div>
+                    )}
                     <PaymentTaxSection
                       vatRate={defaultTaxRate}
                       vatApplied={vatApplied}
-                      vatAmount={settlement.vatAmount}
+                      vatAmount={paymentSettlement.vatAmount}
                       canOverrideVat={canOverrideVat}
                       values={{
                         vatApplied,
@@ -738,6 +836,14 @@ export function WalkInPageContent({
                       </ReviewCard>
                       <ReviewCard title="Payment">
                         <ReviewRow
+                          label="Policy"
+                          value={
+                            BOOKING_PAYMENT_POLICY_OPTIONS.find(
+                              (o) => o.value === form.paymentPolicy
+                            )?.label || form.paymentPolicy
+                          }
+                        />
+                        <ReviewRow
                           label="Method"
                           value={
                             PAYMENT_METHOD_OPTIONS.find(
@@ -746,8 +852,22 @@ export function WalkInPageContent({
                           }
                         />
                         <ReviewRow label="Total" value={formatCurrency(total)} />
-                        <ReviewRow label="Paid" value={formatCurrency(form.amountPaid)} />
-                        <ReviewRow label="Balance" value={formatCurrency(balance)} />
+                        <ReviewRow
+                          label="Paid"
+                          value={formatCurrency(draftAmountPaid)}
+                        />
+                        <ReviewRow
+                          label="Balance"
+                          value={
+                            balance != null ? formatCurrency(balance) : "—"
+                          }
+                        />
+                        <div className="flex items-center justify-between gap-2 pt-1">
+                          <span className="text-muted-foreground">Status</span>
+                          <BookingPaymentLifecycleBadge
+                            status={summary.paymentLifecycle}
+                          />
+                        </div>
                       </ReviewCard>
                       <div className="md:col-span-2">
                         <ReviewCard title="Summary">

@@ -89,6 +89,13 @@ export function BookingConfirmationContent() {
           Questions about your stay? Call{" "}
           <a href={`tel:${hotelContact.phoneTel}`} className="font-medium text-brand-navy hover:text-brand-gold">
             {hotelContact.phoneDisplay}
+          </a>{" "}
+          or email{" "}
+          <a
+            href={`mailto:${hotelContact.reservationsEmail}`}
+            className="font-medium text-brand-navy hover:text-brand-gold"
+          >
+            {hotelContact.reservationsEmail}
           </a>
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">

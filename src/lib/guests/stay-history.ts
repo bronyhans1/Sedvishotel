@@ -3,20 +3,20 @@ import type { Reservation } from "@/types/reservation";
 import type { GuestStayRecord } from "@/types/guest";
 
 export function getGuestStayHistory(
-  guestEmail: string,
+  guestId: string,
   reservations: Reservation[]
 ): GuestStayRecord[] {
-  const normalized = guestEmail.trim().toLowerCase();
   return reservations
-    .filter((r) => r.guestEmail.toLowerCase() === normalized)
-    .map((r) => ({
-      reservationId: r.id,
-      reservationNumber: r.reservationNumber,
-      roomNumber: r.roomNumber,
-      checkInDate: r.checkInDate,
-      checkOutDate: r.checkOutDate,
-      amountPaid: r.amountPaid,
-      status: r.status,
-      nights: nightsBetween(r.checkInDate, r.checkOutDate),
-    }));
+    .filter((reservation) => reservation.guestId === guestId)
+    .map((reservation) => ({
+      reservationId: reservation.id,
+      reservationNumber: reservation.reservationNumber,
+      roomNumber: reservation.roomNumber,
+      checkInDate: reservation.checkInDate,
+      checkOutDate: reservation.checkOutDate,
+      amountPaid: reservation.amountPaid,
+      status: reservation.status,
+      nights: nightsBetween(reservation.checkInDate, reservation.checkOutDate),
+    }))
+    .sort((a, b) => b.checkInDate.localeCompare(a.checkInDate));
 }

@@ -5,6 +5,7 @@ import { Mail, MapPin, Phone } from "lucide-react";
 
 import { PublicBookButton } from "@/components/public/PublicBookButton";
 import { PublicLogo } from "@/components/public/PublicLogo";
+import { SocialLinks } from "@/components/public/SocialLinks";
 import { hotelContact } from "@/config/hotel-contact";
 import { hotelInformation } from "@/config/hotel-information";
 import { publicNavLinks, publicSiteConfig } from "@/config/public-site";
@@ -82,7 +83,9 @@ export function PublicFooter({ accommodationLinks }: PublicFooterProps) {
             <ul className="space-y-3 text-sm text-white/80">
               <li className="flex gap-2">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-gold" />
-                {hotelContact.address}
+                <span className="whitespace-pre-line">
+                  {hotelContact.addressLines.join("\n")}
+                </span>
               </li>
               <li className="flex gap-2">
                 <Phone className="h-4 w-4 shrink-0 text-brand-gold" />
@@ -97,26 +100,12 @@ export function PublicFooter({ accommodationLinks }: PublicFooterProps) {
                 </a>
               </li>
             </ul>
-            <div className="mt-6 flex flex-wrap gap-2">
-              {social.map((s) => (
-                <a
-                  key={s.label}
-                  href={s.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 text-xs font-medium transition-colors hover:border-brand-gold hover:text-brand-gold"
-                  aria-label={s.label}
-                >
-                  {s.label[0]}
-                </a>
-              ))}
-            </div>
+            <SocialLinks links={social} className="mt-6 w-full" />
           </div>
         </div>
       </div>
       <div className="border-t border-white/10 py-6 text-center text-xs text-white/50">
-        © {new Date().getFullYear()} {name}. All rights reserved. · Guest rooms ·{" "}
-        {hotelContact.shortLocation}
+        © {new Date().getFullYear()} {name}. All rights reserved.
       </div>
     </footer>
   );

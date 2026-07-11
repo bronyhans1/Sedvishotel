@@ -58,6 +58,8 @@ export type PaymentSettlementSource = {
   vatApplied: boolean;
   amountPaid: number;
   paymentAmount: number;
+  /** When true, paymentAmount is never auto-filled to outstanding balance (booking wizards). */
+  suppressPaymentProjection?: boolean;
   /** When set (existing payment ledger), locks total due for partial continuations. */
   lockedTotalDue?: number | null;
 };
@@ -114,7 +116,11 @@ export function buildPaymentSettlement(
     Math.max(0, totalDue - amountPaid)
   );
   const paymentAmount = roundCurrency(
-    source.paymentAmount > 0 ? source.paymentAmount : outstandingBalance
+    source.suppressPaymentProjection
+      ? Math.max(0, source.paymentAmount)
+      : source.paymentAmount > 0
+        ? source.paymentAmount
+        : outstandingBalance
   );
   const projectedNetPaid = roundCurrency(amountPaid + paymentAmount);
   const remainingAfterPayment = roundCurrency(
@@ -150,6 +156,7 @@ export function buildSettlementFromReservation(
     lockedTotalDue?: number | null;
     discount?: number;
     amountPaid?: number;
+    suppressPaymentProjection?: boolean;
   }
 ): PaymentSettlement {
   return buildPaymentSettlement({
@@ -164,5 +171,6 @@ export function buildSettlementFromReservation(
     amountPaid: options?.amountPaid ?? reservation.amountPaid,
     paymentAmount,
     lockedTotalDue: options?.lockedTotalDue,
+    suppressPaymentProjection: options?.suppressPaymentProjection,
   });
 }

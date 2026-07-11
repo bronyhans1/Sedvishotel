@@ -17,6 +17,8 @@ export interface IReservationRepository {
   getById(id: string): Promise<DbReservationWithRelations | null>;
   getByNumber(reservationNumber: string): Promise<DbReservationWithRelations | null>;
   getByGuestId(guestId: string): Promise<DbReservationWithRelations[]>;
+  countCheckInsToday(startIso: string, endIso: string): Promise<number>;
+  countCheckOutsToday(startIso: string, endIso: string): Promise<number>;
   getByRoomId(roomId: string): Promise<DbReservationWithRelations[]>;
   findPendingCheckIns(asOfDate: string): Promise<DbReservationWithRelations[]>;
   findCheckedIn(): Promise<DbReservationWithRelations[]>;

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Crown, Eye, Pencil } from "lucide-react";
+import { Eye, Pencil } from "lucide-react";
 
 import { GuestStatusBadge } from "@/components/guests/GuestStatusBadge";
 import { Button } from "@/components/ui/button";
@@ -51,11 +51,7 @@ export function GuestTable({ guests, canEdit, onEdit }: Props) {
                   {guest.totalVisits}
                 </td>
                 <td className="px-4 py-3">
-                  {guest.vipStatus ? (
-                    <Crown className="h-4 w-4 text-brand-gold" />
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
+                  {guest.vipStatus ? "Yes" : "No"}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex justify-end gap-1">

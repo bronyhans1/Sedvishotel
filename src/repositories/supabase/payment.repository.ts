@@ -159,6 +159,20 @@ export class SupabasePaymentRepository implements IPaymentRepository {
     return data ?? [];
   }
 
+  async getTransactionById(id: string): Promise<DbPaymentTransaction | null> {
+    const { data, error } = await this.client
+      .from("payment_transactions")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to load payment transaction: ${error.message}`);
+    }
+
+    return data;
+  }
+
   async getTransactionsForIds(
     paymentIds: string[]
   ): Promise<Map<string, DbPaymentTransaction[]>> {
@@ -283,26 +297,41 @@ export class SupabasePaymentRepository implements IPaymentRepository {
   }
 
   async getNextReceiptNumber(): Promise<string> {
-    const year = new Date().getFullYear();
-    const prefix = `RCPT-${year}-`;
-
-    const { data, error } = await this.client
-      .from("payment_transactions")
-      .select("receipt_number")
-      .like("receipt_number", `${prefix}%`)
-      .order("receipt_number", { ascending: false })
-      .limit(1);
+    const { data, error } = await this.client.rpc("next_payment_receipt_locked");
 
     if (error) {
       throw new Error(`Failed to generate receipt number: ${error.message}`);
     }
 
-    const last = data?.[0]?.receipt_number;
-    const nextSeq = last
-      ? Number.parseInt(last.slice(-6), 10) + 1
-      : 1;
+    if (typeof data !== "string" || !data.trim()) {
+      throw new Error("Failed to generate receipt number: empty response");
+    }
 
-    return `${prefix}${String(nextSeq).padStart(6, "0")}`;
+    return data;
+  }
+
+  async recordReceiptPrint(
+    transactionId: string,
+    userId: string
+  ): Promise<{ printCount: number; receiptNumber: string }> {
+    const { data, error } = await this.client.rpc("shms_record_payment_receipt_print", {
+      p_transaction_id: transactionId,
+      p_user_id: userId,
+    });
+
+    if (error) {
+      throw new Error(`Failed to record receipt print: ${error.message}`);
+    }
+
+    const payload = data as {
+      print_count?: number;
+      receipt_number?: string;
+    } | null;
+
+    return {
+      printCount: Number(payload?.print_count ?? 1),
+      receiptNumber: String(payload?.receipt_number ?? ""),
+    };
   }
 
   async getTransactionsForBusinessDate(
@@ -352,5 +381,18 @@ export class SupabasePaymentRepository implements IPaymentRepository {
     }
 
     return mapRpcRefundResult((data ?? {}) as RpcPaymentCommitRow);
+  }
+
+  async listPaymentMethodsForGuest(guestId: string): Promise<string[]> {
+    const { data, error } = await this.client
+      .from("payments")
+      .select("method")
+      .eq("guest_id", guestId);
+
+    if (error) {
+      throw new Error(`Failed to load guest payment methods: ${error.message}`);
+    }
+
+    return (data ?? []).map((row) => String(row.method));
   }
 }

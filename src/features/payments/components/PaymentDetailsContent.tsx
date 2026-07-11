@@ -10,7 +10,9 @@ import { RefundPaymentModal } from "@/components/payments/RefundPaymentModal";
 import { useBranding } from "@/components/branding/BrandingProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { logReceiptPrintAction } from "@/features/payments/actions";
 import type { PaymentAccess } from "@/lib/auth/payment-access.types";
+import { buildReceiptBrandingFromPartial } from "@/lib/receipt/build-receipt-branding";
 import { formatMethodsUsed } from "@/lib/payments/method-aggregation";
 import { printTransactionReceipt } from "@/lib/payments/print-receipt";
 import { formatCurrency } from "@/lib/utils";
@@ -29,6 +31,11 @@ function TimelineEntryBlock({
   entry: PaymentTimelineEntry;
 }) {
   const branding = useBranding();
+  const receiptBranding = buildReceiptBrandingFromPartial({
+    hotelName: branding?.hotelName,
+    logoUrl: branding?.logoUrl,
+    primaryColor: branding?.primaryColor,
+  });
   const isRefund = entry.kind === "refund";
   const label = isRefund
     ? `Refund #${entry.sequenceNumber}`
@@ -84,13 +91,18 @@ function TimelineEntryBlock({
           variant="outline"
           size="sm"
           className="mt-1"
-          onClick={() =>
-            printTransactionReceipt(payment, entry, {
-              hotelName: branding?.hotelName,
-              logoUrl: branding?.logoUrl,
-              primaryColor: branding?.primaryColor,
-            })
-          }
+          onClick={async () => {
+            const result = await logReceiptPrintAction(entry.id);
+            const printCount = result.success
+              ? result.printCount
+              : Math.max(1, (entry.printCount ?? 0) + 1);
+            printTransactionReceipt(
+              payment,
+              entry,
+              receiptBranding,
+              printCount
+            );
+          }}
         >
           <Printer className="h-4 w-4" />
           Print Receipt

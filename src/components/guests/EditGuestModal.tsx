@@ -156,6 +156,25 @@ export function EditGuestModal({
               ))}
             </select>
           </div>
+          <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+            <div>
+              <Label htmlFor="vip-status">VIP Guest</Label>
+              <p className="text-xs text-muted-foreground">
+                Manual flag for priority service.
+              </p>
+            </div>
+            <input
+              id="vip-status"
+              type="checkbox"
+              checked={values.vipStatus}
+              onChange={(e) =>
+                setValues((v) =>
+                  v ? { ...v, vipStatus: e.target.checked } : v
+                )
+              }
+              className="h-4 w-4"
+            />
+          </div>
           <div className="space-y-2">
             <Label>Notes</Label>
             <Textarea

@@ -10,9 +10,10 @@ export type TransactionPaymentMethod =
   | "mobile_money"
   | "card"
   | "bank_transfer"
-  | "online";
+  | "online"
+  | "mixed";
 
-export type PaymentMethod = TransactionPaymentMethod | "mixed";
+export type PaymentMethod = TransactionPaymentMethod;
 
 export type PaymentTimelineEntry = {
   id: string;
@@ -32,6 +33,7 @@ export type PaymentTimelineEntry = {
   vatAmount?: number;
   vatExemptionReason?: string;
   vatExemptionNotes?: string;
+  printCount?: number;
 };
 
 export type Payment = {
@@ -87,7 +89,7 @@ export type PaymentFormValues = {
   guestId: string;
   reservationId: string;
   amount: number;
-  method: TransactionPaymentMethod;
+  method: PaymentMethod;
   referenceNumber: string;
   notes: string;
   vatApplied?: boolean;
@@ -138,10 +140,11 @@ export const PAYMENT_METHOD_OPTIONS: {
   label: string;
 }[] = [
     { value: "cash", label: "Cash" },
-    { value: "mobile_money", label: "Mobile Money" },
     { value: "card", label: "Card" },
+    { value: "mobile_money", label: "Mobile Money" },
     { value: "bank_transfer", label: "Bank Transfer" },
-    { value: "online", label: "Online Payment" },
+    { value: "mixed", label: "Split Payment" },
+    { value: "online", label: "Other" },
   ];
 
 export const REFUND_REASON_OPTIONS = [

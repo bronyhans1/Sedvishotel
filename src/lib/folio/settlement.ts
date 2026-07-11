@@ -9,11 +9,16 @@ import type { Reservation } from "@/types/reservation";
 export function buildPaymentSettlementFromFolio(
   reservation: Reservation,
   folio: AuthoritativeSettlement,
-  paymentAmount: number
+  paymentAmount: number,
+  options?: { suppressPaymentProjection?: boolean }
 ): PaymentSettlement {
   const outstandingBalance = roundCurrency(Math.max(0, folio.outstandingBalance));
   const payment = roundCurrency(
-    paymentAmount > 0 ? paymentAmount : outstandingBalance
+    options?.suppressPaymentProjection
+      ? Math.max(0, paymentAmount)
+      : paymentAmount > 0
+        ? paymentAmount
+        : outstandingBalance
   );
   const projectedNetPaid = roundCurrency(folio.amountPaid + payment);
   const remainingAfterPayment = roundCurrency(

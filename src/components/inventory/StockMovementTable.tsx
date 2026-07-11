@@ -2,6 +2,7 @@ import {
   formatMovementQuantity,
   formatMovementTypeLabel,
 } from "@/components/inventory/stock-display";
+import { formatStockMovementReference } from "@/lib/inventory/movement-reference";
 import type {
   StockMovement,
   StockMovementSortDirection,
@@ -73,11 +74,7 @@ export function StockMovementTable({
                 <td className="px-4 py-3">{movement.previousStock}</td>
                 <td className="px-4 py-3 font-medium">{movement.newStock}</td>
                 <td className="px-4 py-3 text-muted-foreground">
-                  {movement.referenceType || movement.referenceId
-                    ? [movement.referenceType, movement.referenceId]
-                        .filter(Boolean)
-                        .join(" · ")
-                    : "—"}
+                  {formatStockMovementReference(movement)}
                 </td>
                 <td className="px-4 py-3">{movement.movementSource}</td>
                 <td className="px-4 py-3 text-muted-foreground">

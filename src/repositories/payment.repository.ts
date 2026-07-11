@@ -27,6 +27,7 @@ export interface IPaymentRepository {
     reservationId: string
   ): Promise<DbPaymentWithRelations | null>;
   getTransactions(paymentId: string): Promise<DbPaymentTransaction[]>;
+  getTransactionById(id: string): Promise<DbPaymentTransaction | null>;
   getTransactionsForIds(paymentIds: string[]): Promise<Map<string, DbPaymentTransaction[]>>;
   create(
     payment: Omit<DbPayment, "id" | "created_at" | "updated_at">,
@@ -39,6 +40,13 @@ export interface IPaymentRepository {
   update(id: string, data: Partial<DbPayment>): Promise<DbPayment>;
   getNextReference(): Promise<string>;
   getNextReceiptNumber(): Promise<string>;
+  recordReceiptPrint(
+    transactionId: string,
+    userId: string
+  ): Promise<{
+    printCount: number;
+    receiptNumber: string;
+  }>;
   getTransactionsForBusinessDate(businessDate: string): Promise<DbPaymentTransaction[]>;
   commitPaymentAtomically(
     input: import("@/lib/payments/atomic-commit").PaymentAtomicCommitInput
@@ -46,6 +54,7 @@ export interface IPaymentRepository {
   commitRefundAtomically(
     input: import("@/lib/payments/atomic-commit").PaymentAtomicRefundInput
   ): Promise<import("@/lib/payments/atomic-commit").PaymentAtomicRefundResult>;
+  listPaymentMethodsForGuest(guestId: string): Promise<string[]>;
 }
 
 export type PaymentRepository = IPaymentRepository & BaseRepository;

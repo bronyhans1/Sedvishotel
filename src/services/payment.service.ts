@@ -66,6 +66,11 @@ export interface IPaymentService {
     paymentId: string,
     values: RefundFormValues
   ): Promise<Payment>;
+  recordReceiptPrint(
+    ctx: ServiceContext,
+    session: AuthSession,
+    transactionId: string
+  ): Promise<{ printCount: number; receiptNumber: string }>;
 }
 
 export class PaymentService implements IPaymentService {
@@ -693,5 +698,41 @@ export class PaymentService implements IPaymentService {
       throw new PaymentAtomicError();
     }
     return payment;
+  }
+
+  async recordReceiptPrint(
+    ctx: ServiceContext,
+    session: AuthSession,
+    transactionId: string
+  ): Promise<{ printCount: number; receiptNumber: string }> {
+    this.require(session, "view");
+
+    const transaction = await this.payments.getTransactionById(transactionId);
+    if (!transaction?.receipt_number) {
+      throw new ServiceError("Receipt not available for this transaction", "NOT_FOUND", 404);
+    }
+
+    const result = await this.payments.recordReceiptPrint(
+      transactionId,
+      ctx.userId
+    );
+
+    const actionCode =
+      result.printCount > 1
+        ? ActivityActionCodes.PAYMENT_RECEIPT_REPRINTED
+        : ActivityActionCodes.PAYMENT_RECEIPT_PRINTED;
+
+    await this.log(ctx, session, {
+      action: result.printCount > 1 ? "Receipt Reprinted" : "Receipt Printed",
+      actionCode,
+      paymentId: transaction.payment_id,
+      metadata: {
+        transaction_id: transactionId,
+        receipt_number: result.receiptNumber,
+        print_count: result.printCount,
+      },
+    });
+
+    return result;
   }
 }

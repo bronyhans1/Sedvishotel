@@ -1,3 +1,6 @@
+export type PaperSize = "a4" | "thermal_80mm" | "thermal_58mm";
+export type PrinterMode = "browser" | "silent";
+
 export type HotelSettings = {
   hotelName: string;
   address: string;
@@ -5,6 +8,7 @@ export type HotelSettings = {
   email: string;
   website: string;
   tinNumber: string;
+  registrationNumber: string;
   description: string;
   primaryColor: string;
   secondaryColor: string;
@@ -19,13 +23,27 @@ export type HotelSettings = {
   lateCheckoutHourFee2To4: number;
   lateCheckoutHourFee4To6: number;
   currency: string;
+  currencySymbol: string;
   timeZone: string;
   taxRate: number;
   serviceCharge: number;
   invoicePrefix: string;
+  invoiceStartingNumber: number;
+  invoiceDueDays: number;
+  autoGenerateInvoiceNumber: boolean;
   receiptPrefix: string;
+  receiptStartingNumber: number;
+  receiptHeaderMessage: string;
+  receiptFooterMessage: string;
+  showHotelLogo: boolean;
+  showQrCode: boolean;
+  printThankYouMessage: boolean;
   invoiceFooter: string;
   termsAndConditions: string;
+  paperSize: PaperSize;
+  defaultPrinterMode: PrinterMode;
+  autoPrintAfterPayment: boolean;
+  askBeforePrinting: boolean;
   reservationEmailTemplate: string;
   invoiceEmailTemplate: string;
   reminderEmailTemplate: string;

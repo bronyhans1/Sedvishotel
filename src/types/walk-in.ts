@@ -1,4 +1,5 @@
 import type { IdType } from "@/types/guest";
+import type { BookingPaymentPolicy } from "@/types/booking-payment";
 import type {
   TransactionPaymentMethod,
   VatExemptionReason,
@@ -15,6 +16,7 @@ export type WalkInFormValues = {
   checkInDate: string;
   checkOutDate: string;
   paymentMethod: TransactionPaymentMethod;
+  paymentPolicy: BookingPaymentPolicy;
   amountPaid: number;
   discount?: number;
   paymentNotes?: string;

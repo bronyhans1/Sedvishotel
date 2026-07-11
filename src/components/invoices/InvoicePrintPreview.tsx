@@ -4,15 +4,35 @@ import Image from "next/image";
 import { Building2 } from "lucide-react";
 
 import { useBranding } from "@/components/branding/BrandingProvider";
-import { siteConfig } from "@/config/site";
 import { formatCurrency } from "@/lib/utils";
+import type { HotelSettings } from "@/types/settings";
 import type { Invoice } from "@/types/invoice";
 
-type Props = { invoice: Invoice; className?: string };
+type Props = {
+  invoice: Invoice;
+  className?: string;
+  documentSettings?: Pick<
+    HotelSettings,
+    | "address"
+    | "phone"
+    | "email"
+    | "website"
+    | "tinNumber"
+    | "taxRate"
+    | "invoiceFooter"
+    | "termsAndConditions"
+  >;
+};
 
-export function InvoicePrintPreview({ invoice, className }: Props) {
+export function InvoicePrintPreview({ invoice, className, documentSettings }: Props) {
   const branding = useBranding();
-  const hotelName = branding?.hotelName ?? siteConfig.name;
+  const hotelName = branding?.hotelName ?? "SEDVIS HOTEL";
+  const taxPercent = documentSettings
+    ? documentSettings.taxRate <= 1
+      ? Math.round(documentSettings.taxRate * 100)
+      : Math.round(documentSettings.taxRate)
+    : 15;
+  const taxLabel = `Taxes (${taxPercent}%)`;
 
   return (
     <div
@@ -39,7 +59,18 @@ export function InvoicePrintPreview({ invoice, className }: Props) {
           )}
           <div>
             <h1 className="text-xl font-bold tracking-wide">{hotelName}</h1>
-            <p className="text-sm text-slate-600">{siteConfig.fullName}</p>
+            {documentSettings?.address ? (
+              <p className="text-sm text-slate-600">{documentSettings.address}</p>
+            ) : null}
+            {documentSettings?.phone ? (
+              <p className="text-sm text-slate-600">{documentSettings.phone}</p>
+            ) : null}
+            {documentSettings?.email ? (
+              <p className="text-sm text-slate-600">{documentSettings.email}</p>
+            ) : null}
+            {documentSettings?.tinNumber ? (
+              <p className="text-sm text-slate-600">TIN: {documentSettings.tinNumber}</p>
+            ) : null}
           </div>
         </div>
         <div className="text-right text-sm">
@@ -78,7 +109,7 @@ export function InvoicePrintPreview({ invoice, className }: Props) {
             <td className="py-2 text-right">{formatCurrency(invoice.roomCharges)}</td>
           </tr>
           <tr className="border-b border-dashed">
-            <td className="py-2">Taxes (15%)</td>
+            <td className="py-2">{taxLabel}</td>
             <td className="py-2 text-right">{formatCurrency(invoice.taxes)}</td>
           </tr>
           {invoice.additionalCharges > 0 && (
@@ -111,8 +142,16 @@ export function InvoicePrintPreview({ invoice, className }: Props) {
         </div>
       </div>
 
+      {documentSettings?.termsAndConditions ? (
+        <div className="mt-6 border-t pt-4 text-xs text-slate-600">
+          <p className="font-semibold uppercase tracking-wide">Terms & Conditions</p>
+          <p className="mt-2 whitespace-pre-wrap">{documentSettings.termsAndConditions}</p>
+        </div>
+      ) : null}
+
       <p className="mt-8 text-center text-xs text-slate-500">
-        Thank you for staying at {siteConfig.name}. {siteConfig.tagline}
+        {documentSettings?.invoiceFooter ||
+          `Thank you for staying at ${hotelName}.`}
       </p>
     </div>
   );

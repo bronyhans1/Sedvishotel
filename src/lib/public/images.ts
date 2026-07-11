@@ -14,6 +14,8 @@
 
 export const publicImages = {
   logo: "/logo.jpeg",
+  /** Social sharing preview — place file at public/og-default.jpg */
+  socialShare: "/og-default.jpg",
   hero: "/images/hero/hero-main.jpg",
   backgrounds: {
     cta: "/images/backgrounds/cta.jpg",

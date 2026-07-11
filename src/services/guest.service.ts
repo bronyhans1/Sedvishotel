@@ -8,6 +8,8 @@ import {
 } from "@/lib/guests/mapper";
 import type { IActivityLogRepository } from "@/repositories/activity-log.repository";
 import type { IGuestRepository } from "@/repositories/guest.repository";
+import type { IPaymentRepository } from "@/repositories/payment.repository";
+import type { IPosRepository } from "@/repositories/pos.repository";
 import type { AuthSession } from "@/services/auth.service";
 import { ServiceError } from "@/services/types";
 import type { ServiceContext } from "@/services/types";
@@ -37,12 +39,19 @@ export interface IGuestService {
     session: AuthSession,
     guestId: string
   ): Promise<Guest>;
+  getGuestSpendContext(
+    ctx: ServiceContext,
+    session: AuthSession,
+    guestId: string
+  ): Promise<{ lifetimePosSpend: number; paymentMethods: string[] }>;
 }
 
 export class GuestService implements IGuestService {
   constructor(
     private readonly guests: IGuestRepository,
-    private readonly activityLogs: IActivityLogRepository
+    private readonly activityLogs: IActivityLogRepository,
+    private readonly pos?: IPosRepository,
+    private readonly payments?: IPaymentRepository
   ) {}
 
   private require(
@@ -131,6 +140,18 @@ export class GuestService implements IGuestService {
       }
     }
 
+    const phone = values.phone.trim();
+    if (phone) {
+      const existingByPhone = await this.guests.findByPhone(phone);
+      if (existingByPhone && !isGuestArchived(existingByPhone)) {
+        throw new ServiceError(
+          "A guest with this phone number already exists.",
+          "CONFLICT",
+          409
+        );
+      }
+    }
+
     const row = await this.guests.create(formValuesToGuestInsert(values));
 
     await this.log(ctx, session, {
@@ -211,5 +232,21 @@ export class GuestService implements IGuestService {
     });
 
     return mapDbGuestToGuest(archived);
+  }
+
+  async getGuestSpendContext(
+    _ctx: ServiceContext,
+    session: AuthSession,
+    guestId: string
+  ): Promise<{ lifetimePosSpend: number; paymentMethods: string[] }> {
+    this.require(session, "view");
+    await this.resolveRow(guestId);
+
+    const [lifetimePosSpend, paymentMethods] = await Promise.all([
+      this.pos?.sumRoomChargeTotalByGuestId(guestId) ?? Promise.resolve(0),
+      this.payments?.listPaymentMethodsForGuest(guestId) ?? Promise.resolve([]),
+    ]);
+
+    return { lifetimePosSpend, paymentMethods };
   }
 }

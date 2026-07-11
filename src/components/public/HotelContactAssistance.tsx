@@ -52,7 +52,7 @@ export function HotelContactAssistance({ contact }: Props) {
             <MapPin className="h-5 w-5 shrink-0 text-brand-gold" aria-hidden />
             <div>
               <span className="text-muted-foreground">Location: </span>
-              <span className="font-medium text-brand-navy">{address}</span>
+              <span className="font-medium text-brand-navy whitespace-pre-line">{address}</span>
             </div>
           </li>
         ) : null}

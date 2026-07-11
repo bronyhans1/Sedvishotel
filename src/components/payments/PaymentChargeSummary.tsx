@@ -2,11 +2,15 @@
 
 import { formatCurrency } from "@/lib/utils";
 import type { PaymentSettlement } from "@/lib/payments/payment-settlement";
-import { PaymentStatusBadge } from "@/components/payments/PaymentStatusBadge";
+import { resolveCollectionPaymentLifecycle } from "@/lib/payments/booking-payment-lifecycle";
+import { BookingPaymentLifecycleBadge } from "@/components/payments/BookingPaymentLifecycleBadge";
+import type { BookingPaymentPolicy } from "@/types/booking-payment";
 
 type Props = {
   settlement: PaymentSettlement;
-  showProjected?: boolean;
+  collectionAmount?: number;
+  paymentPolicy?: BookingPaymentPolicy;
+  readOnly?: boolean;
 };
 
 function SummaryRow({
@@ -30,10 +34,38 @@ function SummaryRow({
   );
 }
 
-export function PaymentChargeSummary({ settlement, showProjected = true }: Props) {
+export function PaymentChargeSummary({
+  settlement,
+  collectionAmount = 0,
+  paymentPolicy = "collect_now",
+  readOnly = true,
+}: Props) {
   const vatLabel = settlement.vatApplied
     ? `VAT (${(settlement.vatRate * 100).toFixed(1)}%)`
     : "VAT";
+
+  const collecting = Math.max(0, collectionAmount);
+  const remainingAfter = Math.max(
+    0,
+    settlement.outstandingBalance - collecting
+  );
+
+  const currentLifecycle = resolveCollectionPaymentLifecycle({
+    totalAmount: settlement.totalDue,
+    alreadyPaid: settlement.amountPaid,
+    collectionAmount: 0,
+    paymentPolicy,
+  });
+
+  const projectedLifecycle = resolveCollectionPaymentLifecycle({
+    totalAmount: settlement.totalDue,
+    alreadyPaid: settlement.amountPaid,
+    collectionAmount: collecting,
+    paymentPolicy,
+  });
+
+  const lifecycleStatus =
+    collecting > 0 ? projectedLifecycle : currentLifecycle;
 
   return (
     <div className="space-y-3 rounded-lg border bg-muted/30 p-4 text-sm">
@@ -76,7 +108,7 @@ export function PaymentChargeSummary({ settlement, showProjected = true }: Props
           }
         />
         <SummaryRow
-          label="TOTAL DUE"
+          label="Total Due"
           value={formatCurrency(settlement.totalDue)}
           emphasis
         />
@@ -91,26 +123,29 @@ export function PaymentChargeSummary({ settlement, showProjected = true }: Props
         />
       </div>
 
-      {showProjected && settlement.paymentAmount > 0 ? (
+      {collecting > 0 ? (
         <div className="space-y-2 border-t pt-3">
           <SummaryRow
             label="This Payment"
-            value={formatCurrency(settlement.paymentAmount)}
+            value={formatCurrency(collecting)}
           />
           <SummaryRow
             label="Remaining After Payment"
-            value={formatCurrency(settlement.remainingAfterPayment)}
+            value={formatCurrency(remainingAfter)}
           />
-          <div className="flex items-center justify-between gap-2 pt-1">
-            <span className="text-muted-foreground">Payment Status</span>
-            <PaymentStatusBadge status={settlement.projectedStatus} />
-          </div>
         </div>
-      ) : (
-        <div className="flex items-center justify-between gap-2 border-t pt-3">
-          <span className="text-muted-foreground">Payment Status</span>
-          <PaymentStatusBadge status={settlement.paymentStatus} />
-        </div>
+      ) : null}
+
+      <div className="flex items-center justify-between gap-2 border-t pt-3">
+        <span className="text-muted-foreground">Payment Status</span>
+        <BookingPaymentLifecycleBadge status={lifecycleStatus} />
+      </div>
+
+      {readOnly ? null : (
+        <p className="text-xs text-muted-foreground">
+          Summary reflects the reservation ledger. Enter a payment amount below
+          to update status live.
+        </p>
       )}
     </div>
   );

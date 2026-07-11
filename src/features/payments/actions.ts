@@ -10,7 +10,12 @@ import { getPaymentService } from "@/lib/payments/get-payment-service";
 import type { PaymentFormValues, RefundFormValues } from "@/types/payment";
 
 export type PaymentActionResult =
-  | { success: true; paymentId?: string }
+  | {
+      success: true;
+      paymentId: string;
+      receiptNumber?: string | null;
+      balanceAfter: number;
+    }
   | { success: false; error: string };
 
 export async function recordPaymentAction(
@@ -26,7 +31,15 @@ export async function recordPaymentAction(
     revalidatePath("/dashboard/reservations");
     revalidatePath("/dashboard/revenue");
     revalidateDashboardWidgets();
-    return { success: true, paymentId: payment.id };
+    const latestPayment = payment.timeline
+      .filter((entry) => entry.kind === "payment")
+      .at(-1);
+    return {
+      success: true,
+      paymentId: payment.id,
+      receiptNumber: latestPayment?.receiptNumber,
+      balanceAfter: payment.balance,
+    };
   } catch (err) {
     unstable_rethrow(err);
     return { success: false, error: toSafeActionError(err) };
@@ -47,7 +60,29 @@ export async function refundPaymentAction(
     revalidatePath("/dashboard/reservations");
     revalidatePath("/dashboard/revenue");
     revalidateDashboardWidgets();
-    return { success: true, paymentId: payment.id };
+    return {
+      success: true,
+      paymentId: payment.id,
+      balanceAfter: payment.balance,
+    };
+  } catch (err) {
+    unstable_rethrow(err);
+    return { success: false, error: toSafeActionError(err) };
+  }
+}
+
+export type ReceiptPrintActionResult =
+  | { success: true; printCount: number; receiptNumber: string }
+  | { success: false; error: string };
+
+export async function logReceiptPrintAction(
+  transactionId: string
+): Promise<ReceiptPrintActionResult> {
+  try {
+    const { session, ctx } = await getServiceContext();
+    const service = await getPaymentService();
+    const result = await service.recordReceiptPrint(ctx, session, transactionId);
+    return { success: true, ...result };
   } catch (err) {
     unstable_rethrow(err);
     return { success: false, error: toSafeActionError(err) };

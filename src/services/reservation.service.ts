@@ -142,6 +142,15 @@ export interface IReservationService {
     session: AuthSession,
     asOfDate?: string
   ): Promise<CheckOutPageStats>;
+  listReservationsByGuestId(
+    ctx: ServiceContext,
+    session: AuthSession,
+    guestId: string
+  ): Promise<Reservation[]>;
+  getTodayStayEventCounts(
+    ctx: ServiceContext,
+    session: AuthSession
+  ): Promise<{ checkInsToday: number; checkOutsToday: number }>;
   completeCheckIn(
     ctx: ServiceContext,
     session: AuthSession,
@@ -497,6 +506,19 @@ export class ReservationService implements IReservationService {
       }
     }
 
+    const phone = values.guestPhone.trim();
+    if (phone) {
+      const existingByPhone = await this.guests.findByPhone(phone);
+      if (existingByPhone) {
+        await this.guests.update(existingByPhone.id, {
+          full_name: values.guestName.trim(),
+          phone,
+          email: email || existingByPhone.email,
+        });
+        return existingByPhone.id;
+      }
+    }
+
     const created = await this.guests.create({
       full_name: values.guestName.trim(),
       phone: values.guestPhone.trim() || null,
@@ -624,6 +646,18 @@ export class ReservationService implements IReservationService {
     await this.syncRoomStatus(ctx, session, roomId, newStatus, updated.id);
   }
 
+  private async recordGuestCompletedStayIfNeeded(
+    previousStatus: DbReservationStatus,
+    guestId: string,
+    accommodationSpend: number
+  ): Promise<void> {
+    if (previousStatus !== "checked_in") return;
+    await this.guests.incrementVisitStats(
+      guestId,
+      roundCurrency(Math.max(0, accommodationSpend))
+    );
+  }
+
   async listReservations(
     _ctx: ServiceContext,
     session: AuthSession
@@ -641,6 +675,34 @@ export class ReservationService implements IReservationService {
     this.require(session, "view");
     const row = await this.reservations.getById(id);
     return row ? mapDbReservationToReservation(row) : null;
+  }
+
+  async listReservationsByGuestId(
+    _ctx: ServiceContext,
+    session: AuthSession,
+    guestId: string
+  ): Promise<Reservation[]> {
+    this.require(session, "view");
+    const rows = await this.reservations.getByGuestId(guestId);
+    return rows.map(mapDbReservationToReservation);
+  }
+
+  async getTodayStayEventCounts(
+    _ctx: ServiceContext,
+    session: AuthSession
+  ): Promise<{ checkInsToday: number; checkOutsToday: number }> {
+    this.require(session, "view");
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+
+    const [checkInsToday, checkOutsToday] = await Promise.all([
+      this.reservations.countCheckInsToday(start.toISOString(), end.toISOString()),
+      this.reservations.countCheckOutsToday(start.toISOString(), end.toISOString()),
+    ]);
+
+    return { checkInsToday, checkOutsToday };
   }
 
   async checkAvailability(
@@ -1181,6 +1243,12 @@ export class ReservationService implements IReservationService {
       throw new ServiceError("Failed to load checked-out reservation.", "INTERNAL", 500);
     }
 
+    await this.recordGuestCompletedStayIfNeeded(
+      previousStatus,
+      row.guest_id,
+      Number(detail.amount_paid)
+    );
+
     if (this.folios) {
       await this.folios.integrateOnCheckOut(ctx, session, reservationId);
     }
@@ -1420,6 +1488,13 @@ export class ReservationService implements IReservationService {
     if (!detail) {
       throw new ServiceError("Failed to load early check-out reservation.", "INTERNAL", 500);
     }
+
+    await this.recordGuestCompletedStayIfNeeded(
+      previousStatus,
+      row.guest_id,
+      Number(detail.amount_paid)
+    );
+
     return mapDbReservationToReservation(detail);
   }
 
@@ -1640,6 +1715,13 @@ export class ReservationService implements IReservationService {
     if (!detail) {
       throw new ServiceError("Failed to load late check-out reservation.", "INTERNAL", 500);
     }
+
+    await this.recordGuestCompletedStayIfNeeded(
+      previousStatus,
+      row.guest_id,
+      Number(detail.amount_paid)
+    );
+
     return mapDbReservationToReservation(detail);
   }
 

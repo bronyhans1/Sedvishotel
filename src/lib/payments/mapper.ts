@@ -92,6 +92,7 @@ function mapTimelineEntry(
     vatAmount: Number(row.vat_amount ?? 0),
     vatExemptionReason: row.vat_exemption_reason ?? undefined,
     vatExemptionNotes: row.vat_exemption_notes ?? undefined,
+    printCount: row.print_count ?? 0,
   };
 }
 

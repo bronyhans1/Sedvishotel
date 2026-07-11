@@ -17,7 +17,12 @@ import {
 } from "@/features/pos/actions";
 import { useToast } from "@/hooks/use-toast";
 import type { PosAccess } from "@/lib/auth/pos-access.types";
-import { printPosReceipt } from "@/lib/pos/print-pos-receipt";
+import { hotelContact } from "@/config/hotel-contact";
+import {
+  openPosReceiptPrintWindow,
+  renderPosReceiptInWindow,
+  type PosReceiptBranding,
+} from "@/lib/pos/pos-receipt";
 import { formatCurrency } from "@/lib/utils";
 import {
   POS_CUSTOMER_TYPE_OPTIONS,
@@ -129,19 +134,25 @@ export function PosHistoryPageContent({
   );
 
   async function handleReprint(saleId: string) {
+    const printWindow = openPosReceiptPrintWindow();
     setReprintingId(saleId);
     try {
       const result = await getPosSaleAction(saleId);
       if (!result.success) {
+        printWindow?.close();
         toast.error(result.error);
         return;
       }
 
-      printPosReceipt(result.sale, {
+      const receiptBranding: PosReceiptBranding = {
         hotelName: branding?.hotelName,
         logoUrl: branding?.logoUrl,
         primaryColor: branding?.primaryColor,
-      });
+        address: hotelContact.address,
+        phone: hotelContact.phoneDisplay,
+      };
+
+      renderPosReceiptInWindow(printWindow, result.sale, receiptBranding);
 
       const logResult = await logPosReceiptReprintedAction(saleId);
       if (!logResult.success) {

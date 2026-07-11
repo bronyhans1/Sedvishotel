@@ -3,6 +3,8 @@ import { supabaseEnv } from "@/lib/supabase/config";
 import { createServerClient } from "@/lib/supabase/server";
 import { SupabaseActivityLogRepository } from "@/repositories/supabase/activity-log.repository";
 import { SupabaseGuestRepository } from "@/repositories/supabase/guest.repository";
+import { SupabasePaymentRepository } from "@/repositories/supabase/payment.repository";
+import { SupabasePosRepository } from "@/repositories/supabase/pos.repository";
 import { GuestService } from "@/services/guest.service";
 
 export async function getGuestService(): Promise<GuestService> {
@@ -12,6 +14,8 @@ export async function getGuestService(): Promise<GuestService> {
 
   return new GuestService(
     new SupabaseGuestRepository(client),
-    new SupabaseActivityLogRepository(client)
+    new SupabaseActivityLogRepository(client),
+    new SupabasePosRepository(client),
+    new SupabasePaymentRepository(client)
   );
 }

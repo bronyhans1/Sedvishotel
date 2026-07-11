@@ -20,46 +20,54 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import type { GuestAccess } from "@/lib/auth/guest-access.types";
+import type { GuestProfileInsights } from "@/lib/guests/profile-insights";
 import { getGuestStayHistory } from "@/lib/guests/stay-history";
 import { formatCurrency } from "@/lib/utils";
-import { ID_TYPE_OPTIONS, type Guest } from "@/types/guest";
+import { GUEST_STATUS_OPTIONS, ID_TYPE_OPTIONS, type Guest } from "@/types/guest";
 import type { Reservation, ReservationStatus } from "@/types/reservation";
 
 const idLabels = Object.fromEntries(
   ID_TYPE_OPTIONS.map((o) => [o.value, o.label])
 );
 
+const statusLabels = Object.fromEntries(
+  GUEST_STATUS_OPTIONS.map((option) => [option.value, option.label])
+);
+
 type GuestDetailsContentProps = {
   guest: Guest;
   access: GuestAccess;
   guestReservations: Reservation[];
+  profileInsights: GuestProfileInsights;
 };
+
+function formatValue(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "—";
+  return String(value);
+}
 
 export function GuestDetailsContent({
   guest,
   access,
   guestReservations,
+  profileInsights,
 }: GuestDetailsContentProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [editOpen, setEditOpen] = useState(false);
 
   const stayHistory = useMemo(
-    () => getGuestStayHistory(guest.email, guestReservations),
-    [guest.email, guestReservations]
+    () => getGuestStayHistory(guest.id, guestReservations),
+    [guest.id, guestReservations]
   );
 
-  const profileStats = useMemo(() => {
-    const totalNights = stayHistory.reduce((s, h) => s + h.nights, 0);
-    const visits = Math.max(guest.totalVisits, stayHistory.length);
-    return {
-      totalVisits: visits,
-      totalNights,
-      totalSpent: guest.totalSpent,
-      averageStayDuration:
-        visits > 0 ? Math.round((totalNights / visits) * 10) / 10 : 0,
-    };
-  }, [guest, stayHistory]);
+  const averageStayDuration =
+    profileInsights.totalVisits > 0
+      ? Math.round(
+          (profileInsights.totalNightsStayed / profileInsights.totalVisits) *
+            10
+        ) / 10
+      : 0;
 
   function refresh() {
     startTransition(() => {
@@ -95,18 +103,21 @@ export function GuestDetailsContent({
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: "Total Visits", value: profileStats.totalVisits },
-          { label: "Total Nights Stayed", value: profileStats.totalNights },
-          { label: "Total Amount Spent", value: formatCurrency(profileStats.totalSpent) },
+          { label: "Total Visits", value: profileInsights.totalVisits },
+          { label: "Total Nights Stayed", value: profileInsights.totalNightsStayed },
+          {
+            label: "Lifetime Total Spend",
+            value: formatCurrency(profileInsights.lifetimeTotalSpend),
+          },
           {
             label: "Avg Stay Duration",
-            value: `${profileStats.averageStayDuration} nights`,
+            value: `${averageStayDuration} nights`,
           },
-        ].map((s) => (
-          <Card key={s.label}>
+        ].map((stat) => (
+          <Card key={stat.label}>
             <CardContent className="pt-6">
-              <p className="text-xs text-muted-foreground">{s.label}</p>
-              <p className="text-2xl font-bold">{s.value}</p>
+              <p className="text-xs text-muted-foreground">{stat.label}</p>
+              <p className="text-2xl font-bold">{stat.value}</p>
             </CardContent>
           </Card>
         ))}
@@ -115,11 +126,68 @@ export function GuestDetailsContent({
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
+            <CardTitle>Guest Profile</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <p>
+                <span className="text-muted-foreground">VIP: </span>
+                {guest.vipStatus ? "Yes" : "No"}
+              </p>
+              <p>
+                <span className="text-muted-foreground">Returning Guest: </span>
+                {profileInsights.returningGuest ? "Yes" : "No"}
+              </p>
+              <p>
+                <span className="text-muted-foreground">Current Status: </span>
+                {statusLabels[guest.guestStatus]}
+              </p>
+              <p>
+                <span className="text-muted-foreground">First Stay: </span>
+                {formatValue(profileInsights.firstStay)}
+              </p>
+              <p>
+                <span className="text-muted-foreground">Last Stay: </span>
+                {formatValue(profileInsights.lastStay)}
+              </p>
+              <p>
+                <span className="text-muted-foreground">Current Reservation: </span>
+                {profileInsights.currentReservationNumber ?? "—"}
+              </p>
+              <p>
+                <span className="text-muted-foreground">Current Room: </span>
+                {formatValue(profileInsights.currentRoom)}
+              </p>
+              <p>
+                <span className="text-muted-foreground">Preferred Room Type: </span>
+                {formatValue(profileInsights.preferredRoomType)}
+              </p>
+              <p>
+                <span className="text-muted-foreground">Preferred Payment: </span>
+                {formatValue(profileInsights.preferredPaymentMethod)}
+              </p>
+            </div>
+            <Separator />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <p>
+                <span className="text-muted-foreground">Accommodation Spend: </span>
+                {formatCurrency(profileInsights.lifetimeAccommodationSpend)}
+              </p>
+              <p>
+                <span className="text-muted-foreground">POS Spend: </span>
+                {formatCurrency(profileInsights.lifetimePosSpend)}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Personal Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
             <div className="flex gap-3">
-              <User className="h-4 w-4 mt-0.5 text-primary" />
+              <User className="mt-0.5 h-4 w-4 text-primary" />
               <div>
                 <p className="text-muted-foreground">Full Name</p>
                 <p className="font-medium">{guest.fullName}</p>
@@ -127,7 +195,7 @@ export function GuestDetailsContent({
             </div>
             <Separator />
             <div className="flex gap-3">
-              <Phone className="h-4 w-4 mt-0.5 text-primary" />
+              <Phone className="mt-0.5 h-4 w-4 text-primary" />
               <div>
                 <p className="text-muted-foreground">Phone</p>
                 <p className="font-medium">{guest.phone || "—"}</p>
@@ -135,7 +203,7 @@ export function GuestDetailsContent({
             </div>
             <Separator />
             <div className="flex gap-3">
-              <Mail className="h-4 w-4 mt-0.5 text-primary" />
+              <Mail className="mt-0.5 h-4 w-4 text-primary" />
               <div>
                 <p className="text-muted-foreground">Email</p>
                 <p className="font-medium">{guest.email || "—"}</p>
@@ -155,7 +223,7 @@ export function GuestDetailsContent({
               <span className="font-mono">{guest.idNumber || "—"}</span>
             </p>
             <div className="flex gap-3">
-              <MapPin className="h-4 w-4 mt-0.5 text-primary" />
+              <MapPin className="mt-0.5 h-4 w-4 text-primary" />
               <div>
                 <p className="text-muted-foreground">Address</p>
                 <p className="font-medium">{guest.address || "—"}</p>
@@ -163,29 +231,29 @@ export function GuestDetailsContent({
             </div>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Guest Notes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {guest.notes.length > 0 ? (
-              <ul className="space-y-2">
-                {guest.notes.map((note, i) => (
-                  <li
-                    key={i}
-                    className="rounded-lg border bg-muted/30 px-3 py-2 text-sm"
-                  >
-                    {note}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground">No notes on file.</p>
-            )}
-          </CardContent>
-        </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Guest Notes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {guest.notes.length > 0 ? (
+            <ul className="space-y-2">
+              {guest.notes.map((note, index) => (
+                <li
+                  key={index}
+                  className="rounded-lg border bg-muted/30 px-3 py-2 text-sm"
+                >
+                  {note}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No notes on file.</p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

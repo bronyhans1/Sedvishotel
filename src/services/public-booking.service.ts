@@ -215,6 +215,18 @@ export class PublicBookingService implements IPublicBookingService {
       }
     }
 
+    if (phone) {
+      const existingByPhone = await this.guests.findByPhone(phone);
+      if (existingByPhone) {
+        await this.guests.update(existingByPhone.id, {
+          full_name: guest.fullName.trim(),
+          phone,
+          email: email || existingByPhone.email,
+        });
+        return existingByPhone.id;
+      }
+    }
+
     const created = await this.guests.create({
       full_name: guest.fullName.trim(),
       phone: phone || null,

@@ -38,6 +38,7 @@
   ],
   "exclude": [
     "node_modules",
-    "Version 1"
+    "Version 1",
+    "Version 2"
   ]
 }

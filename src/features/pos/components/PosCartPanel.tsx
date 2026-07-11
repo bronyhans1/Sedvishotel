@@ -36,7 +36,7 @@ export function PosCartPanel({
   onTaxChange,
 }: PosCartPanelProps) {
   return (
-    <div className="flex h-full flex-col rounded-xl border bg-card shadow-sm">
+    <div className="rounded-xl border bg-card shadow-sm">
       <div className="flex items-center justify-between border-b px-4 py-3">
         <h2 className="font-semibold">Cart</h2>
         <Button type="button" variant="ghost" size="sm" onClick={onClear} disabled={!lines.length}>
@@ -44,7 +44,7 @@ export function PosCartPanel({
         </Button>
       </div>
 
-      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+      <div className="space-y-3 p-4">
         {!lines.length ? (
           <p className="text-sm text-muted-foreground">Scan or select products to begin.</p>
         ) : (

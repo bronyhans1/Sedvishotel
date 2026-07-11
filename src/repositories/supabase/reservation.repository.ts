@@ -304,4 +304,32 @@ export class SupabaseReservationRepository implements IReservationRepository {
       throw new Error(`Failed to link guest to reservation: ${error.message}`);
     }
   }
+
+  async countCheckInsToday(startIso: string, endIso: string): Promise<number> {
+    const { count, error } = await this.client
+      .from("reservations")
+      .select("*", { count: "exact", head: true })
+      .gte("checked_in_at", startIso)
+      .lte("checked_in_at", endIso);
+
+    if (error) {
+      throw new Error(`Failed to count check-ins today: ${error.message}`);
+    }
+
+    return count ?? 0;
+  }
+
+  async countCheckOutsToday(startIso: string, endIso: string): Promise<number> {
+    const { count, error } = await this.client
+      .from("reservations")
+      .select("*", { count: "exact", head: true })
+      .gte("checked_out_at", startIso)
+      .lte("checked_out_at", endIso);
+
+    if (error) {
+      throw new Error(`Failed to count check-outs today: ${error.message}`);
+    }
+
+    return count ?? 0;
+  }
 }

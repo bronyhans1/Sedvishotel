@@ -22,18 +22,34 @@ type SidebarProps = {
   items?: NavItem[];
 };
 
-function isNavItemActive(pathname: string, href: string): boolean {
-  if (href === "/dashboard") return pathname === href;
-  return pathname === href || pathname.startsWith(`${href}/`);
+function normalizePathname(pathname: string): string {
+  if (pathname.length > 1 && pathname.endsWith("/")) {
+    return pathname.slice(0, -1);
+  }
+  return pathname;
 }
 
-function isParentActive(
-  pathname: string,
-  children: NavChild[]
-): boolean {
-  return children.some(
-    (c) => c.href && isNavItemActive(pathname, c.href)
-  );
+/** Top-level links: active on the route and nested detail pages. */
+function isNavItemActive(pathname: string, href: string): boolean {
+  const path = normalizePathname(pathname);
+  const target = normalizePathname(href);
+  if (target === "/dashboard") return path === target;
+  return path === target || path.startsWith(`${target}/`);
+}
+
+/** Sidebar child links: exact route match only (avoids sibling prefix collisions). */
+function isNavChildActive(pathname: string, href: string): boolean {
+  return normalizePathname(pathname) === normalizePathname(href);
+}
+
+/** Parent groups: expanded when any child route (or nested page under it) is current. */
+function isParentExpanded(pathname: string, children: NavChild[]): boolean {
+  const path = normalizePathname(pathname);
+  return children.some((child) => {
+    if (!child.href) return false;
+    const href = normalizePathname(child.href);
+    return path === href || path.startsWith(`${href}/`);
+  });
 }
 
 export function Sidebar({
@@ -55,7 +71,7 @@ export function Sidebar({
     const open: Record<string, boolean> = {};
     for (const item of navigation) {
       if (item.children?.length) {
-        open[item.title] = isParentActive(pathname, item.children);
+        open[item.title] = isParentExpanded(pathname, item.children);
       }
     }
     return open;
@@ -98,9 +114,9 @@ export function Sidebar({
             lastSection = item.section;
           }
 
-          const parentActive =
+          const parentExpanded =
             item.children?.length &&
-            isParentActive(pathname, item.children);
+            isParentExpanded(pathname, item.children);
           const isOpen = openMenus[item.title] ?? false;
 
           return (
@@ -118,7 +134,7 @@ export function Sidebar({
                     onClick={() => toggleMenu(item.title)}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                      parentActive
+                      parentExpanded
                         ? "bg-sidebar-accent/80 text-white"
                         : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-white"
                     )}
@@ -156,7 +172,7 @@ export function Sidebar({
                             onClick={() => onNavigate?.()}
                             className={cn(
                               "block rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                              isNavItemActive(pathname, child.href)
+                              isNavChildActive(pathname, child.href)
                                 ? "bg-sidebar-accent text-white"
                                 : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-white"
                             )}

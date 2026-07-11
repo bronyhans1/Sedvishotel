@@ -71,6 +71,7 @@ export interface IPosRepository {
   commitSaleAtomically(
     input: import("@/lib/pos/atomic-commit").PosAtomicCommitInput
   ): Promise<import("@/lib/pos/atomic-commit").PosAtomicCommitResult>;
+  sumRoomChargeTotalByGuestId(guestId: string): Promise<number>;
 }
 
 export type { DbSale, DbSaleItem, DbSalePayment, DbSaleWithRelations };

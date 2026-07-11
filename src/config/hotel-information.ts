@@ -11,7 +11,7 @@ export const hotelInformation = {
   receptionHours: "24/7",
   description:
     "SEDVIS HOTEL is a premium hospitality destination in Ho, Volta Region, Ghana, offering refined accommodations and world-class service.",
-  websiteUrl: "https://www.sedvis-hotel.com",
+  websiteUrl: "https://www.sedvishotel.com",
 } as const;
 
 export const hotelBrandPillars = [
