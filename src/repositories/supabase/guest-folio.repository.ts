@@ -20,6 +20,7 @@ const FOLIO_SELECT = `
     reservation_number,
     check_in_date,
     check_out_date,
+    actual_check_out_date,
     status,
     room:rooms!reservations_room_id_fkey ( room_number )
   ),
@@ -61,6 +62,7 @@ export class SupabaseGuestFolioRepository implements IGuestFolioRepository {
         guest_id: input.guestId,
         room_id: input.roomId ?? null,
         folio_number: input.folioNumber,
+        parent_folio_id: input.parentFolioId ?? null,
         status: "open",
       })
       .select("*")
@@ -104,18 +106,35 @@ export class SupabaseGuestFolioRepository implements IGuestFolioRepository {
   async getByReservationId(
     reservationId: string
   ): Promise<DbGuestFolioWithRelations | null> {
+    const folios = await this.listByReservationId(reservationId);
+    if (folios.length === 0) return null;
+    const open = folios.find((folio) => folio.status === "open");
+    if (open) return open;
+    const withAccommodation = folios.filter((folio) =>
+      (folio.entries ?? []).some((entry) => entry.entry_type === "accommodation")
+    );
+    if (withAccommodation.length > 0) {
+      return withAccommodation[0];
+    }
+    return folios[0];
+  }
+
+  async listByReservationId(
+    reservationId: string
+  ): Promise<DbGuestFolioWithRelations[]> {
     const { data, error } = await this.client
       .from("guest_folios")
       .select(FOLIO_SELECT)
       .eq("reservation_id", reservationId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order("created_at", { ascending: false });
 
     if (error) {
-      throw new Error(`Failed to load folio for reservation: ${error.message}`);
+      throw new Error(`Failed to list folios for reservation: ${error.message}`);
     }
-    return toFolioWithRelations(data as unknown as FolioRow);
+
+    return (data ?? [])
+      .map((row) => toFolioWithRelations(row as unknown as FolioRow))
+      .filter((row): row is DbGuestFolioWithRelations => Boolean(row));
   }
 
   async list(options?: {
@@ -247,5 +266,38 @@ export class SupabaseGuestFolioRepository implements IGuestFolioRepository {
     return (data ?? [])
       .map((row) => toFolioWithRelations(row as unknown as FolioRow))
       .filter((row): row is DbGuestFolioWithRelations => Boolean(row));
+  }
+
+  async listChildFolios(parentFolioId: string): Promise<DbGuestFolioWithRelations[]> {
+    const { data, error } = await this.client
+      .from("guest_folios")
+      .select(FOLIO_SELECT)
+      .eq("parent_folio_id", parentFolioId)
+      .order("opened_at", { ascending: true });
+
+    if (error) {
+      throw new Error(`Failed to list child folios: ${error.message}`);
+    }
+
+    return (data ?? [])
+      .map((row) => toFolioWithRelations(row as unknown as FolioRow))
+      .filter((row): row is DbGuestFolioWithRelations => Boolean(row));
+  }
+
+  async setParentFolio(
+    folioId: string,
+    parentFolioId: string | null
+  ): Promise<DbGuestFolio> {
+    const { data, error } = await this.client
+      .from("guest_folios")
+      .update({ parent_folio_id: parentFolioId })
+      .eq("id", folioId)
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      throw new Error(`Failed to set parent folio: ${error?.message ?? "unknown"}`);
+    }
+    return data;
   }
 }

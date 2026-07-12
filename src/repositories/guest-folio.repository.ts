@@ -12,6 +12,7 @@ export type CreateGuestFolioRecord = {
   guestId: string;
   roomId?: string | null;
   folioNumber: string;
+  parentFolioId?: string | null;
 };
 
 export type CreateFolioEntryRecord = {
@@ -35,6 +36,7 @@ export interface IGuestFolioRepository {
   getById(id: string): Promise<DbGuestFolioWithRelations | null>;
   getOpenByReservationId(reservationId: string): Promise<DbGuestFolioWithRelations | null>;
   getByReservationId(reservationId: string): Promise<DbGuestFolioWithRelations | null>;
+  listByReservationId(reservationId: string): Promise<DbGuestFolioWithRelations[]>;
   list(options?: {
     status?: DbGuestFolioStatus;
     fromDate?: string;
@@ -47,6 +49,8 @@ export interface IGuestFolioRepository {
   listEntries(folioId: string): Promise<DbFolioEntry[]>;
   listEntriesForBusinessDate(businessDate: string): Promise<DbFolioEntry[]>;
   listOpenFoliosWithEntries(): Promise<DbGuestFolioWithRelations[]>;
+  listChildFolios(parentFolioId: string): Promise<DbGuestFolioWithRelations[]>;
+  setParentFolio(folioId: string, parentFolioId: string | null): Promise<DbGuestFolio>;
 }
 
 export type {

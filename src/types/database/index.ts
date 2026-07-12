@@ -11,6 +11,9 @@ export interface Database {
       users: { Row: import("@/types/database/tables").DbUser };
       staff_profiles: { Row: import("@/types/database/tables").DbStaffProfile };
       room_types: { Row: import("@/types/database/tables").DbRoomType };
+      room_type_pricing_rules: {
+        Row: import("@/types/database/tables").DbRoomTypePricingRule;
+      };
       floors: { Row: import("@/types/database/tables").DbFloor };
       product_categories: {
         Row: import("@/types/database/tables").DbProductCategory;
@@ -27,6 +30,10 @@ export interface Database {
       rooms: { Row: import("@/types/database/tables").DbRoom };
       guests: { Row: import("@/types/database/tables").DbGuest };
       reservations: { Row: import("@/types/database/tables").DbReservation };
+      corporate_accounts: { Row: import("@/types/database/tables").DbCorporateAccount };
+      group_reservations: { Row: import("@/types/database/tables").DbGroupReservation };
+      reservation_blocks: { Row: import("@/types/database/tables").DbReservationBlock };
+      group_timeline_events: { Row: import("@/types/database/tables").DbGroupTimelineEvent };
       reservation_guests: { Row: import("@/types/database/tables").DbReservationGuest };
       payments: { Row: import("@/types/database/tables").DbPayment };
       payment_transactions: { Row: import("@/types/database/tables").DbPaymentTransaction };

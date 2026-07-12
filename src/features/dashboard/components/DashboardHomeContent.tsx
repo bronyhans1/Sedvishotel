@@ -21,7 +21,9 @@ import { SHMS_MUTATION_EVENT } from "@/hooks/use-live-refresh";
 import { useSyncedProp } from "@/hooks/use-synced-prop";
 import { siteConfig } from "@/config/site";
 import { formatCurrency } from "@/lib/utils";
+import { GroupDashboardWidgets } from "@/features/dashboard/components/GroupDashboardWidgets";
 import type { DashboardHomeData } from "@/types/dashboard-home";
+import type { GroupDashboardContract } from "@/types/group-dashboard";
 import {
   CircleDollarSign,
   Percent,
@@ -35,9 +37,13 @@ import {
 
 type DashboardHomeContentProps = {
   data: DashboardHomeData;
+  groupWidgets?: GroupDashboardContract;
 };
 
-export function DashboardHomeContent({ data: initialData }: DashboardHomeContentProps) {
+export function DashboardHomeContent({
+  data: initialData,
+  groupWidgets,
+}: DashboardHomeContentProps) {
   const [data] = useSyncedProp(initialData);
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -150,6 +156,8 @@ export function DashboardHomeContent({ data: initialData }: DashboardHomeContent
       </div>
 
       <PendingWebsiteReservationsWidget reservations={pendingWebsiteReservations} />
+
+      {groupWidgets && <GroupDashboardWidgets data={groupWidgets} />}
 
       <RecentActivity items={recentActivity} />
 

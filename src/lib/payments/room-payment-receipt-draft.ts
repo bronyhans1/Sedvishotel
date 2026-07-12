@@ -1,4 +1,5 @@
 import { PAYMENT_METHOD_LABELS } from "@/lib/analytics/payment-labels";
+import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
 import { printRoomPaymentReceipt } from "@/lib/receipt/room-payment-receipt";
 import type { RoomPaymentReceiptData } from "@/lib/receipt/room-payment-receipt";
 import type { PaymentSettlement } from "@/lib/payments/payment-settlement";
@@ -25,7 +26,7 @@ export function buildRoomPaymentReceiptDraft(
     roomNumber: reservation.roomNumber,
     roomType: reservation.roomTypeName,
     checkInDate: reservation.checkInDate,
-    checkOutDate: reservation.checkOutDate,
+    checkOutDate: resolveEffectiveCheckOutDate(reservation),
     nights: reservation.numberOfNights,
     accommodationCharge: settlement.accommodationCharge,
     vatAmount: settlement.vatAmount,

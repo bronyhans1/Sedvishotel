@@ -19,6 +19,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { buildPricingPresetsFromRules } from "@/lib/room-types/mapper";
+import { RoomTypePricingPresetsPanel } from "@/components/pricing/RoomTypePricingPresetsPanel";
 import type { RoomType, RoomTypeFormValues } from "@/types/room-type";
 import type { RoomPhoto } from "@/types/room-photo";
 
@@ -37,6 +39,7 @@ function toForm(type: RoomType): RoomTypeFormValues {
     defaultPrice: type.defaultPrice,
     capacity: type.capacity,
     amenities: type.amenities.join(", "),
+    pricingPresets: buildPricingPresetsFromRules(type.pricingRules),
   };
 }
 
@@ -64,7 +67,7 @@ export function EditRoomTypeModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Edit {roomType.name}</DialogTitle>
           <DialogDescription>
@@ -116,7 +119,7 @@ export function EditRoomTypeModal({
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Default Price (GHS)</Label>
+              <Label>Rack Rate (GHS)</Label>
               <Input
                 type="number"
                 value={values.defaultPrice}
@@ -140,6 +143,13 @@ export function EditRoomTypeModal({
               />
             </div>
           </div>
+          <RoomTypePricingPresetsPanel
+            rackRate={values.defaultPrice}
+            presets={values.pricingPresets}
+            onChange={(pricingPresets) =>
+              setValues((v) => (v ? { ...v, pricingPresets } : v))
+            }
+          />
           <div className="space-y-2">
             <Label>Amenities</Label>
             <Input

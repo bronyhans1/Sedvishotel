@@ -30,6 +30,8 @@ export const PERMISSION_MODULES: { id: DbPermissionModule; label: string }[] = [
   { id: "inventory", label: "Inventory" },
   { id: "pos", label: "POS" },
   { id: "guest_folio", label: "Guest Folio" },
+  { id: "group_reservations", label: "Group Reservations" },
+  { id: "corporate_accounts", label: "Corporate Accounts" },
 ];
 
 export const PERMISSION_ACTIONS: DbPermissionAction[] = [

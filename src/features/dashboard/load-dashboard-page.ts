@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getAnalyticsAccess } from "@/lib/auth/analytics-access";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
 import { getAnalyticsService } from "@/lib/analytics/get-analytics-service";
+import { loadGroupDashboardContract } from "@/lib/analytics/group-contracts";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export async function loadDashboardPageData() {
@@ -18,7 +19,10 @@ export async function loadDashboardPageData() {
   }
 
   const service = await getAnalyticsService();
-  const data = await service.getDashboardData(ctx, session);
+  const [data, groupWidgets] = await Promise.all([
+    service.getDashboardData(ctx, session),
+    loadGroupDashboardContract(ctx, session),
+  ]);
 
-  return { data, access };
+  return { data, access, groupWidgets };
 }

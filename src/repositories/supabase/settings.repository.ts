@@ -71,6 +71,10 @@ export class SupabaseSettingsRepository implements ISettingsRepository {
       currency: row.currency,
       taxRate: row.tax_rate,
       serviceCharge: row.service_charge,
+      requireRateOverrideApproval:
+        typeof row.settings_json?.requireRateOverrideApproval === "boolean"
+          ? row.settings_json.requireRateOverrideApproval
+          : false,
     };
   }
 

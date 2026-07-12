@@ -1,5 +1,6 @@
 import { getCheckInAccess } from "@/lib/auth/check-in-access";
 import { getCheckOutAccess } from "@/lib/auth/check-out-access";
+import { getPaymentAccess } from "@/lib/auth/payment-access";
 import { getReservationAccess } from "@/lib/auth/reservation-access";
 import { getTodayDateString } from "@/lib/dates/today";
 import { combineDateAndTime, getCurrentTimeString } from "@/lib/dates/time";
@@ -8,13 +9,21 @@ import {
   buildProgrammaticPaymentIdempotencyKey,
   buildProgrammaticRefundIdempotencyKey,
 } from "@/lib/payments/atomic-commit";
-import { computeTransactionTotals } from "@/lib/payments/totals";
+import { computeTransactionTotals, resolvePaymentStatusFromTotals } from "@/lib/payments/totals";
 import { sessionHasPermission } from "@/lib/auth/permissions";
 import { mapDbReservationToReservation } from "@/lib/reservations/mapper";
+import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
+import {
+  buildReservationPricingSnapshot,
+  mapDbPricingRules,
+  parseRateOverrideHistory,
+  serializeRateOverrideHistory,
+} from "@/lib/reservations/rate-management";
 import {
   computeStayPricing,
   resolvePricingRatesFromSnapshot,
 } from "@/lib/reservations/pricing";
+import type { IActivityLogRepository } from "@/repositories/activity-log.repository";
 import {
   canEarlyCheckOut,
   computeEarlyCheckout,
@@ -36,7 +45,7 @@ import { buildActiveStaysFromReservations } from "@/lib/stays/mapper";
 import { computeStayStats } from "@/lib/stays/stats";
 import { normalizeRoomNumber } from "@/lib/rooms/floor-layout";
 import { resolveFloorLabel } from "@/lib/rooms/mapper";
-import type { IActivityLogRepository } from "@/repositories/activity-log.repository";
+import type { IRoomTypePricingRuleRepository } from "@/repositories/room-type-pricing-rule.repository";
 import type { IGuestRepository } from "@/repositories/guest.repository";
 import type { INotificationRepository } from "@/repositories/notification.repository";
 import type {
@@ -69,6 +78,84 @@ import type { PaymentFormValues, TransactionPaymentMethod } from "@/types/paymen
 import type { Reservation, ReservationFormValues } from "@/types/reservation";
 import type { ActiveStay, StayStats } from "@/types/stay";
 import { notifyHousekeepingAlert } from "@/lib/notifications/operational-notifications";
+
+const EARLY_CHECKOUT_RUNTIME_MARKER = "[early-checkout-runtime]";
+const EARLY_CHECKOUT_RUNTIME_STATE_MARKER = "[early-checkout-runtime][state]";
+
+type EarlyCheckoutOperationalSnapshot = {
+  phase: string;
+  reservation_id: string;
+  "reservation.status": string | null;
+  "guest.status": string | null;
+  "room.status": string | null;
+  "folio.id": string | null;
+  "folio.status": string | null;
+  "payment.status": string | null;
+  "payment.balance": number | null;
+};
+
+function logEarlyCheckoutOperationalSnapshot(
+  snapshot: EarlyCheckoutOperationalSnapshot
+): void {
+  console.info(EARLY_CHECKOUT_RUNTIME_STATE_MARKER, snapshot);
+}
+
+function serializeEarlyCheckoutError(err: unknown) {
+  if (err instanceof Error) {
+    return {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+      cause: err.cause,
+    };
+  }
+  return { value: err };
+}
+
+function logEarlyCheckoutPhase(
+  phase: string,
+  reservationId: string,
+  metadata?: Record<string, unknown>
+): void {
+  console.info(EARLY_CHECKOUT_RUNTIME_MARKER, phase, {
+    reservationId,
+    ...metadata,
+  });
+}
+
+function logEarlyCheckoutPhaseError(
+  phase: string,
+  reservationId: string,
+  err: unknown,
+  metadata?: Record<string, unknown>
+): void {
+  console.error(EARLY_CHECKOUT_RUNTIME_MARKER, `${phase} ERROR`, {
+    reservationId,
+    ...metadata,
+    error: serializeEarlyCheckoutError(err),
+  });
+}
+
+async function runEarlyCheckoutPhase<T>(
+  phase: string,
+  reservationId: string,
+  work: () => Promise<T>,
+  metadata?: Record<string, unknown>,
+  afterSuccess?: () => void | Promise<void>
+): Promise<T> {
+  logEarlyCheckoutPhase(phase, reservationId, metadata);
+  try {
+    const result = await work();
+    logEarlyCheckoutPhase(`${phase} OK`, reservationId, metadata);
+    if (afterSuccess) {
+      await afterSuccess();
+    }
+    return result;
+  } catch (err) {
+    logEarlyCheckoutPhaseError(phase, reservationId, err, metadata);
+    throw err;
+  }
+}
 
 export type AvailableRoom = {
   id: string;
@@ -239,6 +326,10 @@ export interface IReservationService {
 }
 
 export class ReservationService implements IReservationService {
+  private earlyCheckoutInstrumentation: {
+    payments: IPaymentRepository;
+  } | null = null;
+
   constructor(
     private readonly reservations: IReservationRepository,
     private readonly guests: IGuestRepository,
@@ -250,7 +341,8 @@ export class ReservationService implements IReservationService {
       currency: "GHS",
       taxRate: 0,
       serviceCharge: 0,
-    }
+    },
+    private readonly pricingRules?: IRoomTypePricingRuleRepository
   ) {}
 
   private require(
@@ -279,6 +371,46 @@ export class ReservationService implements IReservationService {
     }
   }
 
+  private earlyCheckoutStateAfterPhase(phase: string, reservationId: string) {
+    return () => this.logEarlyCheckoutOperationalStateSnapshot(phase, reservationId);
+  }
+
+  private async logEarlyCheckoutOperationalStateSnapshot(
+    phase: string,
+    reservationId: string
+  ): Promise<void> {
+    if (!this.earlyCheckoutInstrumentation) return;
+
+    try {
+      const row = await this.reservations.getById(reservationId);
+      const payment = await this.earlyCheckoutInstrumentation.payments.getByReservationId(
+        reservationId
+      );
+      const folio = this.folios
+        ? await this.folios.getRuntimeFolioState(reservationId)
+        : { id: null, status: null };
+
+      logEarlyCheckoutOperationalSnapshot({
+        phase,
+        reservation_id: reservationId,
+        "reservation.status": row?.status ?? null,
+        "guest.status": row?.guest?.guest_status ?? null,
+        "room.status": row?.room?.status ?? null,
+        "folio.id": folio.id,
+        "folio.status": folio.status,
+        "payment.status": payment?.status ?? null,
+        "payment.balance":
+          payment != null ? roundCurrency(Number(payment.balance_after)) : null,
+      });
+    } catch (err) {
+      console.error(EARLY_CHECKOUT_RUNTIME_STATE_MARKER, {
+        phase,
+        reservation_id: reservationId,
+        snapshotError: serializeEarlyCheckoutError(err),
+      });
+    }
+  }
+
   private async syncPaymentLedgerAfterTotalChange(
     reservationId: string,
     newTotal: number,
@@ -289,9 +421,17 @@ export class ReservationService implements IReservationService {
 
     const transactions = await payments.getTransactions(payment.id);
     const totals = computeTransactionTotals(transactions);
+    const balance = computeOutstandingBalance(newTotal, totals.netPaid);
     await payments.update(payment.id, {
       total_due: newTotal,
-      balance_after: computeOutstandingBalance(newTotal, totals.netPaid),
+      balance_after: balance,
+      status: resolvePaymentStatusFromTotals(newTotal, totals),
+    });
+
+    await this.reservations.update(reservationId, {
+      total_amount: newTotal,
+      amount_paid: totals.netPaid,
+      balance: roundCurrency(Math.max(0, balance)),
     });
   }
 
@@ -396,6 +536,70 @@ export class ReservationService implements IReservationService {
     };
   }
 
+  private async resolvePricingSnapshot(
+    input: {
+      rackRate: number;
+      roomTypeId: string;
+      checkIn: string;
+      checkOut: string;
+      pricing?: ReservationFormValues["pricing"];
+      userId: string;
+      existing?: DbReservation;
+    }
+  ) {
+    const rules = this.pricingRules
+      ? mapDbPricingRules(
+          await this.pricingRules.getByRoomTypeId(input.roomTypeId)
+        )
+      : [];
+
+    const pricingInput =
+      input.pricing ??
+      (input.existing
+        ? {
+            pricingMode: input.existing.pricing_mode,
+            chargedRate:
+              input.existing.pricing_mode === "manual_override"
+                ? Number(input.existing.room_rate)
+                : undefined,
+            overrideReason: input.existing.override_reason as
+              | import("@/types/pricing").OverrideReason
+              | undefined,
+            overrideReasonDetail: input.existing.override_reason_detail ?? undefined,
+            approvedById: input.existing.approved_by ?? undefined,
+          }
+        : undefined);
+
+    const snapshot = buildReservationPricingSnapshot({
+      rackRate: input.rackRate,
+      checkIn: input.checkIn,
+      checkOut: input.checkOut,
+      pricingInput,
+      pricingRules: rules,
+      taxRate: this.pricingSettings.taxRate,
+      serviceChargeRate: this.pricingSettings.serviceCharge,
+      userId: input.userId,
+      requireOverrideApproval: this.pricingSettings.requireRateOverrideApproval,
+    });
+
+    const pricingChanged =
+      !input.existing ||
+      snapshot.chargedRate !== Number(input.existing.room_rate) ||
+      snapshot.pricingMode !== input.existing.pricing_mode ||
+      snapshot.rackRate !== Number(input.existing.rack_rate ?? input.existing.room_rate);
+
+    const history = input.existing
+      ? parseRateOverrideHistory(input.existing.rate_override_history)
+      : [];
+
+    const finalHistory =
+      pricingChanged && snapshot.historyEntry
+        ? [...history, snapshot.historyEntry]
+        : history;
+
+    return { snapshot, history: finalHistory, pricingChanged };
+  }
+
   private roomStatusForReservation(
     status: DbReservationStatus
   ): DbRoomStatus | null {
@@ -421,40 +625,114 @@ export class ReservationService implements IReservationService {
     status: DbReservationStatus,
     reservationId: string
   ): Promise<void> {
-    const next = this.roomStatusForReservation(status);
-    if (!next) return;
-
-    const room = await this.rooms.getById(roomId);
-    if (!room) return;
-
-    const previous = room.status;
-    if (previous === next) return;
-
-    await this.rooms.changeStatus(roomId, next);
-
-    await this.activityLogs.create({
-      userId: ctx.userId,
-      userName: session.fullName,
-      action: `Room ${room.room_number} status ${previous} → ${next} (reservation sync)`,
-      actionCode: ActivityActionCodes.ROOM_STATUS_CHANGED,
-      module: "rooms",
-      entityType: "room",
-      entityId: roomId,
-      metadata: {
-        reservation_id: reservationId,
-        previous_status: previous,
-        new_status: next,
-      },
+    logEarlyCheckoutPhase("room status update", reservationId, {
+      roomId,
+      reservationStatus: status,
+      query: "rooms.select/update",
     });
 
-    if (this.notifications && next === "cleaning") {
-      await notifyHousekeepingAlert(this.notifications, {
+    try {
+      const next = this.roomStatusForReservation(status);
+      if (!next) {
+        logEarlyCheckoutPhase("room status update OK", reservationId, {
+          roomId,
+          reservationStatus: status,
+          skipped: "no mapped room status",
+        });
+        await this.logEarlyCheckoutOperationalStateSnapshot(
+          "room status update",
+          reservationId
+        );
+        return;
+      }
+
+      const room = await this.rooms.getById(roomId);
+      if (!room) {
+        logEarlyCheckoutPhase("room status update OK", reservationId, {
+          roomId,
+          reservationStatus: status,
+          skipped: "room not found",
+        });
+        await this.logEarlyCheckoutOperationalStateSnapshot(
+          "room status update",
+          reservationId
+        );
+        return;
+      }
+
+      const previous = room.status;
+      if (previous === next) {
+        logEarlyCheckoutPhase("room status update OK", reservationId, {
+          roomId,
+          roomNumber: room.room_number,
+          previousStatus: previous,
+          nextStatus: next,
+          skipped: "already in target status",
+        });
+        await this.logEarlyCheckoutOperationalStateSnapshot(
+          "room status update",
+          reservationId
+        );
+        return;
+      }
+
+      await this.rooms.changeStatus(roomId, next);
+
+      await this.activityLogs.create({
+        userId: ctx.userId,
+        userName: session.fullName,
+        action: `Room ${room.room_number} status ${previous} → ${next} (reservation sync)`,
+        actionCode: ActivityActionCodes.ROOM_STATUS_CHANGED,
+        module: "rooms",
+        entityType: "room",
+        entityId: roomId,
+        metadata: {
+          reservation_id: reservationId,
+          previous_status: previous,
+          new_status: next,
+        },
+      });
+
+      if (this.notifications && next === "cleaning") {
+        await runEarlyCheckoutPhase(
+          "notifications",
+          reservationId,
+          async () => {
+            await notifyHousekeepingAlert(this.notifications!, {
+              roomId,
+              roomNumber: room.room_number,
+              title: "Room Needs Cleaning",
+              message: `Room ${room.room_number} requires housekeeping after check-out.`,
+              alertKind: "needs_cleaning",
+            });
+          },
+          {
+            roomId,
+            roomNumber: room.room_number,
+            query: "notifications.insert",
+          },
+          () =>
+            this.logEarlyCheckoutOperationalStateSnapshot("notifications", reservationId)
+        );
+      }
+
+      logEarlyCheckoutPhase("room status update OK", reservationId, {
         roomId,
         roomNumber: room.room_number,
-        title: "Room Needs Cleaning",
-        message: `Room ${room.room_number} requires housekeeping after check-out.`,
-        alertKind: "needs_cleaning",
+        previousStatus: previous,
+        nextStatus: next,
       });
+      await this.logEarlyCheckoutOperationalStateSnapshot(
+        "room status update",
+        reservationId
+      );
+    } catch (err) {
+      logEarlyCheckoutPhaseError("room status update", reservationId, err, {
+        roomId,
+        reservationStatus: status,
+        query: "rooms.select/update or activity_logs.insert",
+      });
+      throw err;
     }
   }
 
@@ -745,9 +1023,27 @@ export class ReservationService implements IReservationService {
       values.checkOutDate
     );
 
-    const roomRate = Number(room.room_type.default_price);
-    const { numberOfNights, subtotal, taxes, serviceCharge, totalAmount } =
-      this.computeFinancials(roomRate, values.checkInDate, values.checkOutDate);
+    const rackRate = Number(room.room_type.default_price);
+    const { snapshot, history, pricingChanged } = await this.resolvePricingSnapshot({
+      rackRate,
+      roomTypeId: room.room_type_id,
+      checkIn: values.checkInDate,
+      checkOut: values.checkOutDate,
+      pricing: values.pricing,
+      userId: ctx.userId,
+    });
+
+    if (
+      this.pricingSettings.requireRateOverrideApproval &&
+      snapshot.discountAmount > 0 &&
+      !snapshot.approvedById
+    ) {
+      throw new ServiceError(
+        "Manager approval is required before applying this rate override.",
+        "VALIDATION",
+        400
+      );
+    }
 
     const row = await this.reservations.create({
       guest_id: guestId,
@@ -759,14 +1055,26 @@ export class ReservationService implements IReservationService {
       children: values.children,
       status: values.status,
       booking_source: values.bookingSource,
-      room_rate: roomRate,
-      number_of_nights: numberOfNights,
-      subtotal,
-      taxes,
-      service_charge: serviceCharge,
-      total_amount: totalAmount,
+      rack_rate: snapshot.rackRate,
+      room_rate: snapshot.chargedRate,
+      discount_amount: snapshot.discountAmount,
+      discount_percent: snapshot.discountPercent,
+      pricing_mode: snapshot.pricingMode,
+      pricing_source: snapshot.pricingSource,
+      pricing_rule_id: snapshot.pricingRuleId,
+      override_reason: snapshot.overrideReason,
+      override_reason_detail: snapshot.overrideReasonDetail,
+      overridden_by: snapshot.overriddenById,
+      approved_by: snapshot.approvedById,
+      override_at: snapshot.overrideAt,
+      rate_override_history: serializeRateOverrideHistory(history),
+      number_of_nights: snapshot.numberOfNights,
+      subtotal: snapshot.subtotal,
+      taxes: snapshot.taxes,
+      service_charge: snapshot.serviceCharge,
+      total_amount: snapshot.totalAmount,
       amount_paid: 0,
-      balance: totalAmount,
+      balance: snapshot.totalAmount,
       special_requests: null,
       internal_notes: null,
       created_by: ctx.userId,
@@ -795,8 +1103,28 @@ export class ReservationService implements IReservationService {
       action: `Created reservation ${row.reservation_number}`,
       actionCode: ActivityActionCodes.RESERVATION_CREATED,
       entityId: row.id,
-      metadata: { reservation_number: row.reservation_number },
+      metadata: {
+        reservation_number: row.reservation_number,
+        rack_rate: snapshot.rackRate,
+        charged_rate: snapshot.chargedRate,
+        pricing_mode: snapshot.pricingMode,
+      },
     });
+
+    if (pricingChanged && snapshot.historyEntry) {
+      await this.log(ctx, session, {
+        action: `Rate override applied on ${row.reservation_number}`,
+        actionCode: ActivityActionCodes.RESERVATION_RATE_OVERRIDE,
+        entityId: row.id,
+        metadata: {
+          rack_rate: snapshot.rackRate,
+          charged_rate: snapshot.chargedRate,
+          discount_amount: snapshot.discountAmount,
+          pricing_mode: snapshot.pricingMode,
+          override_reason: snapshot.overrideReason,
+        },
+      });
+    }
 
     await this.syncRoomStatus(ctx, session, room.id, values.status, row.id);
 
@@ -846,23 +1174,74 @@ export class ReservationService implements IReservationService {
       email: values.guestEmail.trim() || null,
     });
 
-    const roomRate = Number(room.room_type.default_price);
-    const pricingInputsChanged =
-      datesOrRoomChanged || roomRate !== Number(existing.room_rate);
+    const roomChanged = room.id !== existing.room_id;
+    const rackRate = roomChanged
+      ? Number(room.room_type.default_price)
+      : Number(existing.rack_rate ?? existing.room_rate);
 
-    const financials = pricingInputsChanged
-      ? this.computeFinancials(roomRate, values.checkInDate, values.checkOutDate, {
-          subtotal: Number(existing.subtotal),
-          taxes: Number(existing.taxes),
-          serviceCharge: Number(existing.service_charge),
+    const datesChanged =
+      values.checkInDate !== existing.check_in_date ||
+      values.checkOutDate !== existing.check_out_date;
+
+    const pricingInputsChanged =
+      datesOrRoomChanged || Boolean(values.pricing);
+
+    const { snapshot, history, pricingChanged } = pricingInputsChanged
+      ? await this.resolvePricingSnapshot({
+          rackRate,
+          roomTypeId: room.room_type_id,
+          checkIn: values.checkInDate,
+          checkOut: values.checkOutDate,
+          pricing: values.pricing,
+          userId: ctx.userId,
+          existing,
         })
       : {
-          numberOfNights: existing.number_of_nights,
-          subtotal: Number(existing.subtotal),
-          taxes: Number(existing.taxes),
-          serviceCharge: Number(existing.service_charge),
-          totalAmount: Number(existing.total_amount),
+          snapshot: null,
+          history: parseRateOverrideHistory(existing.rate_override_history),
+          pricingChanged: false,
         };
+
+    if (
+      pricingInputsChanged &&
+      this.pricingSettings.requireRateOverrideApproval &&
+      snapshot &&
+      snapshot.discountAmount > 0 &&
+      !snapshot.approvedById
+    ) {
+      throw new ServiceError(
+        "Manager approval is required before applying this rate override.",
+        "VALIDATION",
+        400
+      );
+    }
+
+    const financials = pricingInputsChanged && snapshot
+      ? {
+          numberOfNights: snapshot.numberOfNights,
+          subtotal: snapshot.subtotal,
+          taxes: snapshot.taxes,
+          serviceCharge: snapshot.serviceCharge,
+          totalAmount: snapshot.totalAmount,
+        }
+      : datesChanged
+        ? this.computeFinancials(
+            Number(existing.room_rate),
+            values.checkInDate,
+            values.checkOutDate,
+            {
+              subtotal: Number(existing.subtotal),
+              taxes: Number(existing.taxes),
+              serviceCharge: Number(existing.service_charge),
+            }
+          )
+        : {
+            numberOfNights: existing.number_of_nights,
+            subtotal: Number(existing.subtotal),
+            taxes: Number(existing.taxes),
+            serviceCharge: Number(existing.service_charge),
+            totalAmount: Number(existing.total_amount),
+          };
 
     const balance = roundCurrency(financials.totalAmount - Number(existing.amount_paid));
     const previousStatus = existing.status;
@@ -877,7 +1256,23 @@ export class ReservationService implements IReservationService {
       children: values.children,
       status: newStatus,
       booking_source: values.bookingSource,
-      room_rate: roomRate,
+      ...(pricingInputsChanged && snapshot
+        ? {
+            rack_rate: snapshot.rackRate,
+            room_rate: snapshot.chargedRate,
+            discount_amount: snapshot.discountAmount,
+            discount_percent: snapshot.discountPercent,
+            pricing_mode: snapshot.pricingMode,
+            pricing_source: snapshot.pricingSource,
+            pricing_rule_id: snapshot.pricingRuleId,
+            override_reason: snapshot.overrideReason,
+            override_reason_detail: snapshot.overrideReasonDetail,
+            overridden_by: snapshot.overriddenById,
+            approved_by: snapshot.approvedById,
+            override_at: snapshot.overrideAt,
+            rate_override_history: serializeRateOverrideHistory(history),
+          }
+        : {}),
       number_of_nights: financials.numberOfNights,
       subtotal: financials.subtotal,
       taxes: financials.taxes,
@@ -889,7 +1284,20 @@ export class ReservationService implements IReservationService {
 
     this.assertEditableStatusTransition(previousStatus, newStatus);
 
-    const roomChanged = room.id !== existing.room_id;
+    if (pricingChanged && snapshot?.historyEntry) {
+      await this.log(ctx, session, {
+        action: `Rate override applied on ${updated.reservation_number}`,
+        actionCode: ActivityActionCodes.RESERVATION_RATE_OVERRIDE,
+        entityId: updated.id,
+        metadata: {
+          rack_rate: snapshot.rackRate,
+          charged_rate: snapshot.chargedRate,
+          discount_amount: snapshot.discountAmount,
+          pricing_mode: snapshot.pricingMode,
+          override_reason: snapshot.overrideReason,
+        },
+      });
+    }
 
     if (previousStatus !== newStatus) {
       await this.applyStatusTransition(
@@ -1052,7 +1460,9 @@ export class ReservationService implements IReservationService {
       departuresToday: departuresToday.length,
       pendingCheckOuts: departuresToday.length,
       completedCheckOutsToday: reservations.filter(
-        (r) => r.checkOutDate === asOfDate && r.status === "checked_out"
+        (r) =>
+          (r.status === "checked_out" || r.status === "checked_out_early") &&
+          resolveEffectiveCheckOutDate(r) === asOfDate
       ).length,
       roomsAwaitingCleaning,
     };
@@ -1336,166 +1746,385 @@ export class ReservationService implements IReservationService {
     paymentService: IPaymentService,
     payments: IPaymentRepository
   ): Promise<Reservation> {
-    if (!getCheckOutAccess(session).canProcess) {
-      throw new ServiceError(
-        "Forbidden: check_out.edit required to complete early check-out.",
-        "FORBIDDEN",
-        403
-      );
+    this.earlyCheckoutInstrumentation = { payments };
+
+    try {
+      logEarlyCheckoutPhase("ENTER early checkout", reservationId, {
+        input,
+        userId: ctx.userId,
+        userName: session.fullName,
+      });
+
+      const authorizationResult = await runEarlyCheckoutPhase(
+        "authorize",
+        reservationId,
+        async () => {
+        // ── Phase 1: Authorize before any financial mutation ──────────────
+        if (!getCheckOutAccess(session).canProcess) {
+          throw new ServiceError(
+            "Forbidden: check_out.edit required to complete early check-out.",
+            "FORBIDDEN",
+            403
+          );
+        }
+
+        const trimmedReason = input.reason.trim();
+        if (!trimmedReason) {
+          throw new ServiceError("Early check-out reason is required.", "VALIDATION", 400);
+        }
+
+        const actualCheckOutDate =
+          input.actualCheckOutDate?.trim() || getTodayDateString();
+        const row = await this.resolveRow(reservationId);
+
+        if (row.status === "checked_out_early") {
+          const completed = await this.reservations.getById(row.id);
+          if (!completed) {
+            throw new ServiceError("Failed to load early check-out reservation.", "INTERNAL", 500);
+          }
+          return {
+            completed: mapDbReservationToReservation(completed),
+          };
+        }
+
+        if (row.status !== "checked_in") {
+          throw new ServiceError(
+            "Only checked-in reservations can use early check-out.",
+            "VALIDATION",
+            400
+          );
+        }
+
+        if (
+          !canEarlyCheckOut(
+            row.status,
+            row.check_in_date,
+            row.check_out_date,
+            actualCheckOutDate
+          )
+        ) {
+          throw new ServiceError(
+            "Guest is not eligible for early check-out on this date.",
+            "VALIDATION",
+            400
+          );
+        }
+
+        const rates = this.resolveSnapshotRates(row);
+        const computation = computeEarlyCheckout({
+          checkInDate: row.check_in_date,
+          scheduledCheckOutDate: row.check_out_date,
+          actualCheckOutDate,
+          originalNights: row.number_of_nights,
+          totalAmount: Number(row.total_amount),
+          roomRate: Number(row.room_rate),
+          amountPaid: Number(row.amount_paid),
+          taxRate: rates.taxRate,
+          serviceChargeRate: rates.serviceChargeRate,
+        });
+
+        const refundAmount = computation.refundAmount;
+        let paymentRecord: Awaited<
+          ReturnType<IPaymentRepository["getByReservationId"]>
+        > = null;
+
+        if (refundAmount > 0) {
+          const paymentAccess = getPaymentAccess(session);
+          const checkoutAccess = getCheckOutAccess(session);
+          if (!paymentAccess.canRefund && !checkoutAccess.canProcess) {
+            throw new ServiceError(
+              "Forbidden: payments.manage or check_out.edit required to process early check-out refund.",
+              "FORBIDDEN",
+              403
+            );
+          }
+
+          paymentRecord = await payments.getByReservationId(row.id);
+          if (!paymentRecord) {
+            throw new ServiceError(
+              "Payment record required to process early check-out refund.",
+              "VALIDATION",
+              400
+            );
+          }
+        }
+
+        const paymentTransactions =
+          paymentRecord != null
+            ? await payments.getTransactions(paymentRecord.id)
+            : [];
+        const progress = this.folios
+          ? await this.folios.detectEarlyCheckoutFinancialProgress(
+              row.id,
+              paymentTransactions,
+              paymentRecord?.id ?? null,
+              refundAmount > 0
+            )
+          : {
+              folioAdjustmentPosted: false,
+              refundPosted: false,
+              folioClosed: false,
+              hasOpenFolio: false,
+            };
+
+        return {
+          trimmedReason,
+          actualCheckOutDate,
+          row,
+          computation,
+          refundAmount,
+          paymentRecord,
+          progress,
+          previousStatus: row.status,
+          scheduledCheckOut: row.check_out_date,
+          notes: input.notes?.trim() || null,
+        };
+      },
+      {
+        query: "reservations.select, payments.select, payment_transactions.select",
+      },
+      this.earlyCheckoutStateAfterPhase("authorize", reservationId)
+    );
+
+    if ("completed" in authorizationResult) {
+      const completed = authorizationResult.completed;
+      if (!completed) {
+        throw new ServiceError("Failed to load early check-out reservation.", "INTERNAL", 500);
+      }
+      logEarlyCheckoutPhase("return success", reservationId, {
+        path: "already checked_out_early",
+      });
+      await this.logEarlyCheckoutOperationalStateSnapshot("return success", reservationId);
+      return completed;
     }
 
-    const trimmedReason = input.reason.trim();
-    if (!trimmedReason) {
-      throw new ServiceError("Early check-out reason is required.", "VALIDATION", 400);
-    }
-
-    const actualCheckOutDate = input.actualCheckOutDate?.trim() || getTodayDateString();
-    const row = await this.resolveRow(reservationId);
-
-    if (row.status !== "checked_in") {
-      throw new ServiceError(
-        "Only checked-in reservations can use early check-out.",
-        "VALIDATION",
-        400
-      );
-    }
-
-    if (
-      !canEarlyCheckOut(
-        row.status,
-        row.check_in_date,
-        row.check_out_date,
-        actualCheckOutDate
-      )
-    ) {
-      throw new ServiceError(
-        "Guest is not eligible for early check-out on this date.",
-        "VALIDATION",
-        400
-      );
-    }
-
-    const rates = this.resolveSnapshotRates(row);
-
-    const computation = computeEarlyCheckout({
-      checkInDate: row.check_in_date,
-      scheduledCheckOutDate: row.check_out_date,
+    const {
+      trimmedReason,
       actualCheckOutDate,
-      originalNights: row.number_of_nights,
-      totalAmount: Number(row.total_amount),
-      roomRate: Number(row.room_rate),
-      amountPaid: Number(row.amount_paid),
-      taxRate: rates.taxRate,
-      serviceChargeRate: rates.serviceChargeRate,
-    });
+      row,
+      computation,
+      refundAmount,
+      paymentRecord,
+      progress,
+      previousStatus,
+      scheduledCheckOut,
+      notes,
+    } = authorizationResult;
 
-    const previousStatus = row.status;
-    const scheduledCheckOut = row.check_out_date;
-    const notes = input.notes?.trim() || null;
+    // ── Phase 2: Folio accommodation revision (idempotent) ────────────────
+    await runEarlyCheckoutPhase(
+      "adjustment",
+      row.id,
+      async () => {
+        if (this.folios && !progress.folioAdjustmentPosted) {
+          const creditAmount = await this.resolveEarlyCheckoutFolioCredit(
+            row.id,
+            computation.actualTotal,
+            roundCurrency(Number(row.total_amount))
+          );
+          if (creditAmount > 0) {
+            await this.folios.integrateEarlyCheckoutAdjustment(
+              ctx,
+              session,
+              row.id,
+              creditAmount,
+              row.reservation_number,
+              trimmedReason
+            );
+          }
+        }
+      },
+      {
+        query: "guest_folios.select, folio_entries.insert",
+        skipped: progress.folioAdjustmentPosted,
+      },
+      this.earlyCheckoutStateAfterPhase("adjustment", row.id)
+    );
 
-    if (this.folios) {
-      const creditAmount = await this.resolveEarlyCheckoutFolioCredit(
-        row.id,
-        computation.actualTotal,
-        roundCurrency(Number(row.total_amount))
-      );
-      if (creditAmount > 0) {
-        await this.folios.integrateEarlyCheckoutAdjustment(
+    // ── Phase 3: Cash refund when guest overpaid (idempotent key) ─────────
+    await runEarlyCheckoutPhase(
+      "refund",
+      row.id,
+      async () => {
+        if (refundAmount > 0 && paymentRecord && !progress.refundPosted) {
+          const refundReason = `Early Check-Out: ${trimmedReason}`;
+          const refundMethod: TransactionPaymentMethod =
+            paymentRecord.method === "mixed" ? "cash" : paymentRecord.method;
+          await paymentService.refund(ctx, session, paymentRecord.id, {
+            amount: refundAmount,
+            method: refundMethod,
+            reason: refundReason,
+            notes: notes ?? "",
+            idempotencyKey: buildProgrammaticRefundIdempotencyKey(
+              "early_checkout",
+              paymentRecord.id
+            ),
+            authorizedByCheckout: true,
+          });
+        }
+      },
+      {
+        paymentId: paymentRecord?.id,
+        refundAmount,
+        query: "shms_commit_payment_refund, payment_transactions.insert",
+        skipped: refundAmount <= 0 || !paymentRecord || progress.refundPosted,
+      },
+      this.earlyCheckoutStateAfterPhase("refund", row.id)
+    );
+
+    // ── Phase 4: Assert checkout allowed while folio remains open ─────────
+    await runEarlyCheckoutPhase(
+      "payment sync",
+      row.id,
+      async () => {
+        if (this.folios) {
+          await this.folios.assertCheckoutAllowed(ctx, session, row.id);
+          await this.folios.syncReservationSettlement(row.id);
+        }
+      },
+      {
+        query: "guest_folios.select, reservations.update, payments.update",
+      },
+      this.earlyCheckoutStateAfterPhase("payment sync", row.id)
+    );
+
+    // ── Phase 5: Commit reservation checkout state (before folio close) ───
+    const updated = await runEarlyCheckoutPhase(
+      "reservation.update",
+      row.id,
+      async () =>
+        this.reservations.update(row.id, {
+          status: "checked_out_early",
+          number_of_nights: computation.actualNights,
+          subtotal: computation.actualSubtotal,
+          taxes: computation.actualTaxes,
+          service_charge: computation.actualServiceCharge,
+          total_amount: computation.actualTotal,
+          balance: computation.actualBalance,
+          original_check_out_date: scheduledCheckOut,
+          actual_check_out_date: actualCheckOutDate,
+          early_checkout_reason: trimmedReason,
+          early_checkout_notes: notes,
+          early_checkout_refund_amount: refundAmount,
+          ...this.statusTimestamps("checked_out_early", previousStatus),
+        }),
+      {
+        query: "reservations.update",
+        status: "checked_out_early",
+        actualCheckOutDate,
+      },
+      this.earlyCheckoutStateAfterPhase("reservation.update", row.id)
+    );
+
+    await runEarlyCheckoutPhase(
+      "applyStatusTransition",
+      row.id,
+      async () => {
+        await this.applyStatusTransition(
           ctx,
           session,
-          row.id,
-          creditAmount,
-          row.reservation_number,
-          trimmedReason
+          row,
+          previousStatus,
+          updated,
+          row.room_id
         );
-      }
-    }
-
-    if (computation.refundAmount > 0) {
-      const payment = await payments.getByReservationId(row.id);
-      if (!payment) {
-        throw new ServiceError(
-          "Payment record required to process early check-out refund.",
-          "VALIDATION",
-          400
-        );
-      }
-
-      const refundReason = `Early Check-Out: ${trimmedReason}`;
-      const refundMethod: TransactionPaymentMethod =
-        payment.method === "mixed" ? "cash" : payment.method;
-      await paymentService.refund(ctx, session, payment.id, {
-        amount: computation.refundAmount,
-        method: refundMethod,
-        reason: refundReason,
-        notes: notes ?? "",
-        idempotencyKey: buildProgrammaticRefundIdempotencyKey(
-          "early_checkout",
-          payment.id
-        ),
-      });
-    }
-
-    await this.finalizeCheckedInCheckout(ctx, session, row.id);
-
-    const updated = await this.reservations.update(row.id, {
-      status: "checked_out_early",
-      check_out_date: actualCheckOutDate,
-      number_of_nights: computation.actualNights,
-      subtotal: computation.actualSubtotal,
-      taxes: computation.actualTaxes,
-      service_charge: computation.actualServiceCharge,
-      ...(this.folios
-        ? {}
-        : {
-            total_amount: computation.actualTotal,
-            balance: computation.actualBalance,
-          }),
-      original_check_out_date: scheduledCheckOut,
-      actual_check_out_date: actualCheckOutDate,
-      early_checkout_reason: trimmedReason,
-      early_checkout_notes: notes,
-      early_checkout_refund_amount: computation.refundAmount,
-      ...this.statusTimestamps("checked_out_early", previousStatus),
-    });
-
-    await this.applyStatusTransition(
-      ctx,
-      session,
-      row,
-      previousStatus,
-      updated,
-      row.room_id
-    );
-
-    await this.log(ctx, session, {
-      action: `Early check-out ${updated.reservation_number}`,
-      actionCode: ActivityActionCodes.RESERVATION_EARLY_CHECKOUT,
-      entityId: updated.id,
-      metadata: {
-        reservation_number: updated.reservation_number,
-        guest: row.guest.full_name,
-        room: row.room.room_number,
-        unused_nights: computation.unusedNights,
-        refund_amount: computation.refundAmount,
-        reason: trimmedReason,
-        original_check_out_date: scheduledCheckOut,
-        actual_check_out_date: actualCheckOutDate,
       },
-    });
-
-    const detail = await this.reservations.getById(updated.id);
-    if (!detail) {
-      throw new ServiceError("Failed to load early check-out reservation.", "INTERNAL", 500);
-    }
-
-    await this.recordGuestCompletedStayIfNeeded(
-      previousStatus,
-      row.guest_id,
-      Number(detail.amount_paid)
+      {
+        previousStatus,
+        nextStatus: updated.status,
+        roomId: row.room_id,
+      },
+      this.earlyCheckoutStateAfterPhase("applyStatusTransition", row.id)
     );
 
-    return mapDbReservationToReservation(detail);
+    // ── Phase 6: Close folio only after reservation is checked out ───────
+    await runEarlyCheckoutPhase(
+      "integrateOnCheckOut",
+      row.id,
+      async () => {
+        if (this.folios) {
+          await this.folios.integrateOnCheckOut(ctx, session, row.id);
+        }
+      },
+      {
+        query: "guest_folios.select/update",
+      },
+      this.earlyCheckoutStateAfterPhase("integrateOnCheckOut", row.id)
+    );
+
+    // ── Phase 7: Align payment ledger with final shortened stay totals ────
+    await runEarlyCheckoutPhase(
+      "payment sync",
+      row.id,
+      async () => {
+        await this.syncPaymentLedgerAfterTotalChange(
+          row.id,
+          computation.actualTotal,
+          payments
+        );
+      },
+      {
+        query: "payments.select/update, payment_transactions.select, reservations.update",
+        totalAmount: computation.actualTotal,
+      },
+      this.earlyCheckoutStateAfterPhase("payment sync", row.id)
+    );
+
+    await runEarlyCheckoutPhase(
+      "activity log",
+      row.id,
+      async () => {
+        await this.log(ctx, session, {
+          action: `Early check-out ${updated.reservation_number}`,
+          actionCode: ActivityActionCodes.RESERVATION_EARLY_CHECKOUT,
+          entityId: updated.id,
+          metadata: {
+            reservation_number: updated.reservation_number,
+            guest: row.guest.full_name,
+            room: row.room.room_number,
+            unused_nights: computation.unusedNights,
+            refund_amount: refundAmount,
+            reason: trimmedReason,
+            original_check_out_date: scheduledCheckOut,
+            actual_check_out_date: actualCheckOutDate,
+            recovered: progress.folioAdjustmentPosted || progress.refundPosted,
+          },
+        });
+      },
+      {
+        query: "activity_logs.insert",
+        actionCode: ActivityActionCodes.RESERVATION_EARLY_CHECKOUT,
+      },
+      this.earlyCheckoutStateAfterPhase("activity log", row.id)
+    );
+
+    const detail = await runEarlyCheckoutPhase(
+      "return success",
+      row.id,
+      async () => {
+        const detail = await this.reservations.getById(updated.id);
+        if (!detail) {
+          throw new ServiceError("Failed to load early check-out reservation.", "INTERNAL", 500);
+        }
+
+        await this.recordGuestCompletedStayIfNeeded(
+          previousStatus,
+          row.guest_id,
+          Number(detail.amount_paid)
+        );
+
+        return detail;
+      },
+      {
+        query: "reservations.select, guests.update",
+      },
+      this.earlyCheckoutStateAfterPhase("return success", row.id)
+    );
+
+      return mapDbReservationToReservation(detail);
+    } finally {
+      this.earlyCheckoutInstrumentation = null;
+    }
   }
 
   async previewLateCheckOut(

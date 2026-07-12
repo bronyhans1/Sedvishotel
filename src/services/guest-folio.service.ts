@@ -7,6 +7,12 @@ import {
   type AuthoritativeSettlement,
 } from "@/lib/folio/authoritative-settlement";
 import {
+  buildEarlyCheckoutAdjustmentReference,
+  deriveEarlyCheckoutProgress,
+  folioHasAccommodationLedger,
+  folioHasEarlyCheckoutAdjustment,
+} from "@/lib/reservations/early-checkout-progress";
+import {
   mapDbFolioToGuestFolio,
   mapDbFolioToListItem,
 } from "@/lib/folio/mapper";
@@ -31,6 +37,7 @@ import type {
   ManualCreditInput,
   PostFolioEntryInput,
 } from "@/types/folio";
+import type { EarlyCheckoutProgress } from "@/lib/reservations/early-checkout-progress";
 
 const CHECKED_IN_ONLY = "Only checked-in reservations may receive folio entries.";
 
@@ -65,7 +72,8 @@ export interface IGuestFolioService {
   postPosRoomCharge(
     ctx: ServiceContext,
     session: AuthSession,
-    sale: DbSaleWithRelations
+    sale: DbSaleWithRelations,
+    options?: { internal?: boolean; targetFolioId?: string }
   ): Promise<FolioEntry>;
   postManualCharge(
     ctx: ServiceContext,
@@ -161,6 +169,19 @@ export interface IGuestFolioService {
     reference: string,
     reason: string
   ): Promise<void>;
+  detectEarlyCheckoutFinancialProgress(
+    reservationId: string,
+    paymentTransactions: Array<{
+      idempotency_key?: string | null;
+      description: string;
+    }>,
+    paymentId: string | null,
+    expectRefund: boolean
+  ): Promise<EarlyCheckoutProgress>;
+  getRuntimeFolioState(reservationId: string): Promise<{
+    id: string | null;
+    status: string | null;
+  }>;
   integrateLateCheckoutFee(
     ctx: ServiceContext,
     session: AuthSession,
@@ -314,6 +335,22 @@ export class GuestFolioService implements IGuestFolioService {
       metadata: input.metadata ?? {},
       status: "success",
     });
+  }
+
+  private async folioBalanceForCheckout(reservationId: string): Promise<number> {
+    const folio = await this.folios.getOpenByReservationId(reservationId);
+    if (!folio) return 0;
+    return calculateFolioBalance(this.mapFolioEntries(folio));
+  }
+
+  private async hasEarlyCheckoutAdjustment(
+    reservationId: string,
+    adjustmentReference: string
+  ): Promise<boolean> {
+    const folios = await this.folios.listByReservationId(reservationId);
+    return folios.some((folio) =>
+      folioHasEarlyCheckoutAdjustment(folio, adjustmentReference)
+    );
   }
 
   private async assertCheckedIn(reservationId: string) {
@@ -487,6 +524,16 @@ export class GuestFolioService implements IGuestFolioService {
     if (existing) {
       return mapDbFolioToGuestFolio(existing);
     }
+
+    const ledgerFolio = await this.folios.getByReservationId(reservation.id);
+    if (ledgerFolio && folioHasAccommodationLedger(ledgerFolio)) {
+      throw new ServiceError(
+        "A checkout ledger already exists for this stay. Complete checkout before opening a new folio.",
+        "VALIDATION",
+        400
+      );
+    }
+
     const folioNumber = await this.folios.getNextFolioNumber();
     const row = await this.folios.createFolio({
       reservationId: reservation.id,
@@ -548,16 +595,25 @@ export class GuestFolioService implements IGuestFolioService {
     ctx: ServiceContext,
     session: AuthSession,
     sale: DbSaleWithRelations,
-    options?: { internal?: boolean }
+    options?: { internal?: boolean; targetFolioId?: string }
   ): Promise<FolioEntry> {
     if (!sale.reservation_id) {
       throw new ServiceError("Sale is not linked to a reservation.", "VALIDATION", 400);
     }
 
     const reservation = await this.assertCheckedIn(sale.reservation_id);
-    const folio = options?.internal
-      ? await this.ensureFolioInternal(reservation)
-      : await this.ensureFolioForReservation(ctx, session, reservation);
+    let folio;
+    if (options?.targetFolioId) {
+      const target = await this.folios.getById(options.targetFolioId);
+      if (!target) {
+        throw new ServiceError("Target folio not found.", "NOT_FOUND", 404);
+      }
+      folio = target;
+    } else {
+      folio = options?.internal
+        ? await this.ensureFolioInternal(reservation)
+        : await this.ensureFolioForReservation(ctx, session, reservation);
+    }
 
     return this.postEntry(
       ctx,
@@ -761,7 +817,7 @@ export class GuestFolioService implements IGuestFolioService {
     session: AuthSession,
     reservationId: string
   ): Promise<void> {
-    const balance = await this.calculateBalance(_ctx, session, reservationId);
+    const balance = await this.folioBalanceForCheckout(reservationId);
     if (balance <= 0) return;
 
     const canOverride =
@@ -906,16 +962,65 @@ export class GuestFolioService implements IGuestFolioService {
     session: AuthSession,
     reservationId: string,
     amount: number,
-    reference: string,
+    _reference: string,
     reason: string
   ): Promise<void> {
+    const adjustmentReference = buildEarlyCheckoutAdjustmentReference(reservationId);
+    if (await this.hasEarlyCheckoutAdjustment(reservationId, adjustmentReference)) {
+      return;
+    }
+
+    const openFolio = await this.folios.getOpenByReservationId(reservationId);
+    if (!openFolio) {
+      const ledgerFolio = await this.folios.getByReservationId(reservationId);
+      if (ledgerFolio && folioHasAccommodationLedger(ledgerFolio)) {
+        return;
+      }
+    }
+
     await this.postStayModificationEntry(ctx, session, reservationId, {
       entryType: "adjustment",
       description: `Early check-out adjustment — ${reason}`,
       amount,
       debitCredit: "credit",
-      sourceReference: reference,
+      sourceReference: adjustmentReference,
     });
+  }
+
+  async detectEarlyCheckoutFinancialProgress(
+    reservationId: string,
+    paymentTransactions: Array<{
+      idempotency_key?: string | null;
+      description: string;
+    }>,
+    paymentId: string | null,
+    expectRefund: boolean
+  ): Promise<EarlyCheckoutProgress> {
+    const folios = await this.folios.listByReservationId(reservationId);
+    return deriveEarlyCheckoutProgress({
+      folios,
+      adjustmentReference: buildEarlyCheckoutAdjustmentReference(reservationId),
+      paymentTransactions,
+      paymentId,
+      expectRefund,
+    });
+  }
+
+  async getRuntimeFolioState(reservationId: string): Promise<{
+    id: string | null;
+    status: string | null;
+  }> {
+    const open = await this.folios.getOpenByReservationId(reservationId);
+    if (open) {
+      return { id: open.id, status: open.status };
+    }
+
+    const ledger = await this.folios.getByReservationId(reservationId);
+    if (ledger) {
+      return { id: ledger.id, status: ledger.status };
+    }
+
+    return { id: null, status: null };
   }
 
   async integrateLateCheckoutFee(

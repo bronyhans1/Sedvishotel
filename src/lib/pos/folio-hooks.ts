@@ -31,8 +31,7 @@ export function mapSaleToFolioCharge(sale: PosSale): GuestFolioCharge | null {
   };
 }
 
-/** Stage 5 folio module should query pending room-charge sales by reservation_id. */
+/** DB filter for room-charge sales only. Do not filter by payment_status — use resolveSalePaymentStatus(). */
 export const GUEST_FOLIO_SALE_QUERY = {
   customerType: "room_charge" as const,
-  paymentStatus: "pending" as const,
 };

@@ -10,6 +10,7 @@ import {
   renderReceiptInWindow,
   type ReceiptBranding,
 } from "@/lib/receipt/receipt-core";
+import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
 import { formatCurrency } from "@/lib/utils";
 import type { Payment, PaymentTimelineEntry } from "@/types/payment";
 import type { Reservation } from "@/types/reservation";
@@ -116,8 +117,10 @@ export function buildRoomPaymentReceiptFromPayment(
   entry: PaymentTimelineEntry,
   reservation: Pick<
     Reservation,
+    | "status"
     | "checkInDate"
     | "checkOutDate"
+    | "actualCheckOutDate"
     | "numberOfNights"
     | "roomTypeName"
     | "subtotal"
@@ -141,7 +144,7 @@ export function buildRoomPaymentReceiptFromPayment(
     roomNumber: payment.roomNumber,
     roomType: reservation.roomTypeName,
     checkInDate: reservation.checkInDate,
-    checkOutDate: reservation.checkOutDate,
+    checkOutDate: resolveEffectiveCheckOutDate(reservation),
     nights: reservation.numberOfNights,
     accommodationCharge: accommodation,
     vatAmount: entry.vatAmount ?? reservation.taxes,
@@ -168,8 +171,10 @@ export function printRoomPaymentReceiptFromPayment(
   entry: PaymentTimelineEntry,
   reservation: Pick<
     Reservation,
+    | "status"
     | "checkInDate"
     | "checkOutDate"
+    | "actualCheckOutDate"
     | "numberOfNights"
     | "roomTypeName"
     | "subtotal"

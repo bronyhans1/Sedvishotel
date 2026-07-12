@@ -73,6 +73,10 @@ export const MIGRATION_ORDER = [
   "067_finance_final_polish.sql",
   "068_document_number_preview.sql",
   "069_shift_handover_workflow.sql",
+  "070_group_reservations.sql",
+  "071_group_permission_module.sql",
+  "072_group_permissions.sql",
+  "073_rate_management.sql",
 ] as const;
 
 export const SEED_ORDER = [

@@ -24,6 +24,7 @@ import { formatCurrency } from "@/lib/utils";
 import { humanizeLabel } from "@/lib/labels/humanize";
 import { siteConfig } from "@/config/site";
 import type { ReportsData } from "@/types/reports";
+import type { GroupReportsContract } from "@/types/group-reports";
 
 const icons: Record<string, React.ComponentType<{ className?: string }>> = {
   occupancy: BedDouble,
@@ -36,9 +37,10 @@ const icons: Record<string, React.ComponentType<{ className?: string }>> = {
 
 type ReportsPageContentProps = {
   data: ReportsData;
+  groupReports?: GroupReportsContract;
 };
 
-export function ReportsPageContent({ data }: ReportsPageContentProps) {
+export function ReportsPageContent({ data, groupReports }: ReportsPageContentProps) {
   const [exportMsg, setExportMsg] = useState("");
   const [, startTransition] = useTransition();
 
@@ -162,6 +164,57 @@ export function ReportsPageContent({ data }: ReportsPageContentProps) {
           <p className="text-sm">VAT Overrides: <strong>{data.payments.vatOverrideCount}</strong></p>
         </CardContent>
       </Card>
+
+      {groupReports && groupReports.groupSizeMetrics.totalGroups > 0 && (
+        <>
+          <Card id="group-revenue">
+            <CardHeader><CardTitle>Group & Corporate Reports</CardTitle></CardHeader>
+            <CardContent className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2 text-sm">
+                <p>Total Groups: <strong>{groupReports.groupSizeMetrics.totalGroups}</strong></p>
+                <p>Average Group Size: <strong>{groupReports.groupSizeMetrics.averageGroupSize}</strong></p>
+                <p>Avg Rooms/Group: <strong>{groupReports.groupSizeMetrics.averageRoomsPerGroup}</strong></p>
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-medium">Top Companies by Revenue</p>
+                {groupReports.corporateRevenue.slice(0, 5).map((row) => (
+                  <p key={row.corporateAccountId} className="text-sm text-muted-foreground">
+                    {row.companyName}: {formatCurrency(row.revenue)}
+                  </p>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>Top Groups by Revenue</CardTitle></CardHeader>
+            <CardContent>
+              <SimpleBarChart
+                data={groupReports.groupRevenue.slice(0, 8).map((g) => ({
+                  label: g.groupNumber,
+                  value: g.revenue,
+                }))}
+                monetary
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>Outstanding Corporate</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              {groupReports.corporateOutstanding.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No outstanding corporate balances.</p>
+              ) : (
+                groupReports.corporateOutstanding.map((row) => (
+                  <p key={row.corporateAccountId} className="text-sm">
+                    {row.companyName}: <strong>{formatCurrency(row.outstandingBalance)}</strong>
+                  </p>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       <Card>
         <CardHeader><CardTitle>Export Center</CardTitle></CardHeader>

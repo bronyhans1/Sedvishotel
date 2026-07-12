@@ -29,6 +29,10 @@ import type {
   DbSalePayment,
   DbGuestFolio,
   DbFolioEntry,
+  DbCorporateAccount,
+  DbGroupReservation,
+  DbReservationBlock,
+  DbGroupTimelineEvent,
   DbStaffProfile,
   DbUser,
 } from "@/types/database";
@@ -152,6 +156,10 @@ export type Database = {
       rooms: TableRow<DbRoom, RoomsRelationships>;
       guests: TableRow<DbGuest>;
       reservations: TableRow<DbReservation>;
+      corporate_accounts: TableRow<DbCorporateAccount>;
+      group_reservations: TableRow<DbGroupReservation>;
+      reservation_blocks: TableRow<DbReservationBlock>;
+      group_timeline_events: TableRow<DbGroupTimelineEvent>;
       reservation_guests: TableRow<DbReservationGuest>;
       payments: TableRow<DbPayment>;
       payment_transactions: TableRow<DbPaymentTransaction>;

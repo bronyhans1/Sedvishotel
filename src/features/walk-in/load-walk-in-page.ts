@@ -10,13 +10,14 @@ import {
   isGlobalVatEnabled,
 } from "@/lib/settings/get-tax-rate";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getRoomTypeService } from "@/lib/room-types/get-room-type-service";
 
 export async function loadWalkInPageData() {
   if (!isSupabaseConfigured()) {
     redirect("/login");
   }
 
-  const { session } = await getServiceContextForPage();
+  const { session, ctx } = await getServiceContextForPage();
 
   const access = getWalkInAccess(session);
   if (!access.canView) {
@@ -25,11 +26,20 @@ export async function loadWalkInPageData() {
 
   const paymentAccess = getPaymentAccess(session);
   const defaultTaxRate = await getDefaultTaxRate();
+  const roomTypeService = await getRoomTypeService();
+  const roomTypes = (await roomTypeService.list(ctx, session))
+    .filter((rt) => rt.status === "active")
+    .map((rt) => ({
+      name: rt.name,
+      defaultPrice: rt.defaultPrice,
+      pricingRules: rt.pricingRules,
+    }));
 
   return {
     access,
     defaultTaxRate,
     defaultVatApplied: isGlobalVatEnabled(defaultTaxRate),
     canOverrideVat: paymentAccess.canOverrideVat,
+    roomTypes,
   };
 }

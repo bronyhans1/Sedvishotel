@@ -22,17 +22,24 @@ import { useLiveRefresh } from "@/hooks/use-live-refresh";
 import { useToast } from "@/hooks/use-toast";
 import type { WalkInAccess } from "@/lib/auth/walk-in-access.types";
 import { getTodayDateString } from "@/lib/dates/today";
-import { buildPaymentSettlement } from "@/lib/payments/payment-settlement";
+import { buildWalkInPaymentSettlement } from "@/lib/walk-in/pricing";
 import { roundCurrency } from "@/lib/payments/currency";
 import { BookingPaymentLifecycleBadge } from "@/components/payments/BookingPaymentLifecycleBadge";
 import { PaymentChargeSummary } from "@/components/payments/PaymentChargeSummary";
 import { PaymentTaxSection } from "@/components/payments/PaymentTaxSection";
-import { formatCurrency, nightsBetween } from "@/lib/utils";
+import { PricingCard } from "@/components/pricing/PricingCard";
+import { ReservationPricingSection } from "@/components/pricing/ReservationPricingSection";
+import { formatCurrency } from "@/lib/utils";
+import {
+  buildReservationPricingSnapshot,
+  rulesForBooking,
+} from "@/lib/reservations/rate-management";
 import { siteConfig } from "@/config/site";
 import { BOOKING_PAYMENT_POLICY_OPTIONS } from "@/types/booking-payment";
 import { ID_TYPE_OPTIONS, type IdType } from "@/types/guest";
 import { PAYMENT_METHOD_OPTIONS, type TransactionPaymentMethod } from "@/types/payment";
 import type { BookingPaymentPolicy } from "@/types/booking-payment";
+import type { RoomTypePricingRule } from "@/types/pricing";
 import type { WalkInFormValues, WalkInRoomOption } from "@/types/walk-in";
 
 const selectClass =
@@ -85,6 +92,7 @@ const initial: FormState = {
   vatApplied: true,
   vatExemptionReason: "",
   vatExemptionNotes: "",
+  pricingMode: "standard",
 };
 
 type WalkInPageContentProps = {
@@ -92,6 +100,11 @@ type WalkInPageContentProps = {
   defaultTaxRate: number;
   defaultVatApplied: boolean;
   canOverrideVat: boolean;
+  roomTypes: Array<{
+    name: string;
+    defaultPrice: number;
+    pricingRules: RoomTypePricingRule[];
+  }>;
 };
 
 function WizardField({
@@ -142,6 +155,7 @@ export function WalkInPageContent({
   defaultTaxRate,
   defaultVatApplied,
   canOverrideVat,
+  roomTypes,
 }: WalkInPageContentProps) {
   const toast = useToast();
   const refresh = useLiveRefresh();
@@ -176,70 +190,91 @@ export function WalkInPageContent({
   }, [form.checkInDate, form.checkOutDate, form.roomNumber]);
 
   const selectedRoom = availableRooms.find((r) => r.roomNumber === form.roomNumber);
-  const nights =
-    form.checkInDate && form.checkOutDate
-      ? nightsBetween(form.checkInDate, form.checkOutDate)
-      : 0;
-  const subtotal =
-    selectedRoom && nights > 0 ? selectedRoom.price * nights : 0;
+  const selectedRoomType = selectedRoom
+    ? roomTypes.find((rt) => rt.name === selectedRoom.roomType)
+    : undefined;
   const vatApplied = form.vatApplied ?? defaultVatApplied;
 
-  const pricingSettlement = useMemo(
+  const bookingRules = useMemo(
     () =>
-      buildPaymentSettlement({
+      form.checkInDate && selectedRoomType
+        ? rulesForBooking(selectedRoomType.pricingRules, form.checkInDate)
+        : [],
+    [selectedRoomType, form.checkInDate]
+  );
+
+  /** Single pricing engine execution — all wizard steps reuse this snapshot. */
+  const pricingSnapshot = useMemo(() => {
+    if (
+      !selectedRoom ||
+      !form.checkInDate ||
+      !form.checkOutDate ||
+      form.checkOutDate <= form.checkInDate
+    ) {
+      return null;
+    }
+    return buildReservationPricingSnapshot({
+      rackRate: selectedRoom.price,
+      checkIn: form.checkInDate,
+      checkOut: form.checkOutDate,
+      pricingInput: {
+        pricingMode: form.pricingMode,
+        chargedRate: form.chargedRate,
+        overrideReason: form.overrideReason,
+        overrideReasonDetail: form.overrideReasonDetail,
+        approvedById: form.approvedById,
+      },
+      pricingRules: bookingRules,
+      taxRate: defaultTaxRate,
+      serviceChargeRate: 0,
+      walkInVat: true,
+    });
+  }, [
+    selectedRoom,
+    form.checkInDate,
+    form.checkOutDate,
+    form.pricingMode,
+    form.chargedRate,
+    form.overrideReason,
+    form.overrideReasonDetail,
+    form.approvedById,
+    bookingRules,
+    defaultTaxRate,
+  ]);
+
+  const nights = pricingSnapshot?.numberOfNights ?? 0;
+
+  const paymentSettlement = useMemo(
+    () =>
+      buildWalkInPaymentSettlement({
+        pricingSnapshot,
+        additionalDiscount: form.discount,
         guestName: form.fullName,
         roomNumber: form.roomNumber,
         roomCategory: selectedRoom?.roomType,
-        chargeBase: subtotal,
-        discount: form.discount,
         vatRate: defaultTaxRate,
         vatApplied,
         amountPaid: 0,
-        paymentAmount: 0,
+        paymentAmount: step >= 4 ? form.amountPaid : 0,
         suppressPaymentProjection: true,
       }),
     [
+      pricingSnapshot,
+      form.discount,
       form.fullName,
       form.roomNumber,
-      form.discount,
+      form.amountPaid,
       selectedRoom,
-      subtotal,
       defaultTaxRate,
       vatApplied,
+      step,
     ]
   );
 
-  const paymentSettlement = useMemo(() => {
-    if (step < 4) return pricingSettlement;
-    return buildPaymentSettlement({
-      guestName: form.fullName,
-      roomNumber: form.roomNumber,
-      roomCategory: selectedRoom?.roomType,
-      chargeBase: subtotal,
-      discount: form.discount,
-      vatRate: defaultTaxRate,
-      vatApplied,
-      amountPaid: 0,
-      paymentAmount: form.amountPaid,
-      suppressPaymentProjection: true,
-    });
-  }, [
-    step,
-    pricingSettlement,
-    form.fullName,
-    form.roomNumber,
-    form.discount,
-    form.amountPaid,
-    selectedRoom,
-    subtotal,
-    defaultTaxRate,
-    vatApplied,
-  ]);
-
-  const total = pricingSettlement.totalDue;
+  const total = paymentSettlement.totalDue;
   const draftAmountPaid = step >= 4 ? roundCurrency(form.amountPaid) : 0;
   const balance =
-    step >= 3 && selectedRoom
+    step >= 3 && pricingSnapshot
       ? roundCurrency(Math.max(0, total - draftAmountPaid))
       : null;
 
@@ -292,6 +327,11 @@ export function WalkInPageContent({
       vatApplied: form.vatApplied ?? defaultVatApplied,
       vatExemptionReason: form.vatExemptionReason,
       vatExemptionNotes: form.vatExemptionNotes,
+      pricingMode: form.pricingMode,
+      chargedRate: form.chargedRate,
+      overrideReason: form.overrideReason,
+      overrideReasonDetail: form.overrideReasonDetail,
+      approvedById: form.approvedById,
     };
   }
 
@@ -662,7 +702,7 @@ export function WalkInPageContent({
                           }
                         />
                       </WizardField>
-                      <WizardField label="Discount">
+                      <WizardField label="Discount (additional)">
                         <Input
                           type="number"
                           min={0}
@@ -676,6 +716,33 @@ export function WalkInPageContent({
                           }
                         />
                       </WizardField>
+                      {selectedRoom &&
+                      form.checkInDate &&
+                      form.checkOutDate &&
+                      form.checkOutDate > form.checkInDate ? (
+                        <div className="md:col-span-2">
+                          <ReservationPricingSection
+                            rackRate={selectedRoom.price}
+                            checkIn={form.checkInDate}
+                            checkOut={form.checkOutDate}
+                            pricingRules={selectedRoomType?.pricingRules ?? []}
+                            taxRate={defaultTaxRate}
+                            serviceChargeRate={0}
+                            walkInVat
+                            pricingSnapshot={pricingSnapshot}
+                            value={{
+                              pricingMode: form.pricingMode,
+                              chargedRate: form.chargedRate,
+                              overrideReason: form.overrideReason,
+                              overrideReasonDetail: form.overrideReasonDetail,
+                              approvedById: form.approvedById,
+                            }}
+                            onChange={(pricing) =>
+                              setForm((f) => ({ ...f, ...pricing }))
+                            }
+                          />
+                        </div>
+                      ) : null}
                       <WizardField label="Payment Policy" fullWidth>
                         <select
                           value={form.paymentPolicy}
@@ -711,6 +778,21 @@ export function WalkInPageContent({
                 {step === 4 && (
                   <>
                     <h3 className="font-semibold">Payment</h3>
+                    {pricingSnapshot ? (
+                      <PricingCard
+                        rackRate={pricingSnapshot.rackRate}
+                        chargedRate={pricingSnapshot.chargedRate}
+                        discountAmount={pricingSnapshot.discountAmount}
+                        discountPercent={pricingSnapshot.discountPercent}
+                        pricingMode={pricingSnapshot.pricingMode}
+                        pricingSource={pricingSnapshot.pricingSource}
+                        overrideReason={pricingSnapshot.overrideReason}
+                        overrideReasonDetail={pricingSnapshot.overrideReasonDetail}
+                        approvedById={pricingSnapshot.approvedById}
+                        numberOfNights={pricingSnapshot.numberOfNights}
+                        compact
+                      />
+                    ) : null}
                     <PaymentChargeSummary
                       settlement={paymentSettlement}
                       collectionAmount={form.amountPaid}
@@ -827,13 +909,24 @@ export function WalkInPageContent({
                         <ReviewRow label="Room" value={form.roomNumber} />
                         <ReviewRow label="Type" value={selectedRoom?.roomType ?? ""} />
                         <ReviewRow label="Floor" value={selectedRoom?.floorLabel ?? ""} />
-                        <ReviewRow
-                          label="Rate"
-                          value={
-                            selectedRoom ? formatCurrency(selectedRoom.price) : ""
-                          }
-                        />
                       </ReviewCard>
+                      {pricingSnapshot ? (
+                        <div className="md:col-span-2">
+                          <PricingCard
+                            rackRate={pricingSnapshot.rackRate}
+                            chargedRate={pricingSnapshot.chargedRate}
+                            discountAmount={pricingSnapshot.discountAmount}
+                            discountPercent={pricingSnapshot.discountPercent}
+                            pricingMode={pricingSnapshot.pricingMode}
+                            pricingSource={pricingSnapshot.pricingSource}
+                            overrideReason={pricingSnapshot.overrideReason}
+                            overrideReasonDetail={pricingSnapshot.overrideReasonDetail}
+                            approvedById={pricingSnapshot.approvedById}
+                            numberOfNights={pricingSnapshot.numberOfNights}
+                            priceLocked
+                          />
+                        </div>
+                      ) : null}
                       <ReviewCard title="Payment">
                         <ReviewRow
                           label="Policy"

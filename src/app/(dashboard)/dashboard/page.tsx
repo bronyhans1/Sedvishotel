@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 };
 
 async function DashboardPageLoader() {
-  const { data } = await loadDashboardPageData();
-  return <DashboardHomeContent data={data} />;
+  const { data, groupWidgets } = await loadDashboardPageData();
+  return <DashboardHomeContent data={data} groupWidgets={groupWidgets} />;
 }
 
 export default function DashboardPage() {

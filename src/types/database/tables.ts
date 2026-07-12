@@ -97,6 +97,19 @@ export interface DbRoomType {
   updated_at: Timestamp;
 }
 
+export interface DbRoomTypePricingRule {
+  id: string;
+  room_type_id: string;
+  pricing_mode: import("@/types/database/enums").DbPricingMode;
+  rate: number;
+  effective_from: DateString;
+  effective_to: DateString | null;
+  status: import("@/types/database/enums").DbPricingRuleStatus;
+  is_active: boolean;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
 export interface DbFloor {
   id: string;
   name: string;
@@ -267,6 +280,7 @@ export interface DbGuestFolio {
   reservation_id: string;
   guest_id: string;
   room_id: string | null;
+  parent_folio_id: string | null;
   folio_number: string;
   status: DbGuestFolioStatus;
   opened_at: Timestamp;
@@ -297,7 +311,12 @@ export type DbGuestFolioWithRelations = DbGuestFolio & {
   room: Pick<DbRoom, "id" | "room_number"> | null;
   reservation: Pick<
     DbReservation,
-    "id" | "reservation_number" | "check_in_date" | "check_out_date" | "status"
+    | "id"
+    | "reservation_number"
+    | "check_in_date"
+    | "check_out_date"
+    | "actual_check_out_date"
+    | "status"
   > & {
     room: Pick<DbRoom, "room_number"> | null;
   } | null;
@@ -350,7 +369,19 @@ export interface DbReservation {
   children: number;
   status: DbReservationStatus;
   booking_source: DbBookingSource;
+  rack_rate: number;
   room_rate: number;
+  discount_amount: number;
+  discount_percent: number;
+  pricing_mode: import("@/types/database/enums").DbPricingMode;
+  pricing_source: import("@/types/database/enums").DbPricingSource;
+  pricing_rule_id: string | null;
+  override_reason: string | null;
+  override_reason_detail: string | null;
+  overridden_by: string | null;
+  approved_by: string | null;
+  override_at: Timestamp | null;
+  rate_override_history: unknown;
   number_of_nights: number;
   subtotal: number;
   taxes: number;
@@ -378,6 +409,7 @@ export interface DbReservation {
   late_checkout_policy_type: string | null;
   stay_extension_history: unknown;
   room_move_history: unknown;
+  group_reservation_id?: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 }
@@ -703,4 +735,138 @@ export interface DbInvoiceWithRelations extends DbInvoice {
 export interface DbStaffWithUser extends DbStaffProfile {
   user: DbUser;
   role: DbRole;
+}
+
+export type DbCorporateAccountStatus = "active" | "archived";
+
+export interface DbCorporateAccount {
+  id: string;
+  account_number: string;
+  company_name: string;
+  billing_contact_name: string | null;
+  billing_contact_email: string | null;
+  billing_contact_phone: string | null;
+  billing_address: string | null;
+  credit_limit: number | null;
+  credit_terms: string | null;
+  status: DbCorporateAccountStatus;
+  notes: string | null;
+  created_by: string | null;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export type DbGroupReservationType =
+  | "corporate"
+  | "government"
+  | "ngo"
+  | "school"
+  | "church"
+  | "sports_team"
+  | "conference"
+  | "wedding"
+  | "tour"
+  | "other";
+
+export type DbGroupReservationStatus =
+  | "draft"
+  | "confirmed"
+  | "partially_checked_in"
+  | "in_house"
+  | "partially_checked_out"
+  | "completed"
+  | "closed"
+  | "cancelled";
+
+export type DbGroupBillingPolicy =
+  | "company_pays_all"
+  | "guest_pays_all"
+  | "company_pays_accommodation"
+  | "guest_pays_extras"
+  | "mixed_billing"
+  | "deposit"
+  | "credit"
+  | "complimentary"
+  | "pay_at_check_out";
+
+export interface DbGroupReservation {
+  id: string;
+  group_number: string;
+  group_name: string;
+  group_type: DbGroupReservationType;
+  status: DbGroupReservationStatus;
+  billing_policy: DbGroupBillingPolicy;
+  corporate_account_id: string | null;
+  master_reservation_id: string | null;
+  arrival_date: DateString;
+  departure_date: DateString;
+  expected_rooms: number;
+  expected_guests: number;
+  actual_rooms: number;
+  actual_guests: number;
+  notes: string | null;
+  created_by: string | null;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export type DbReservationBlockStatus =
+  | "blocked"
+  | "allocated"
+  | "released"
+  | "cancelled"
+  | "expired";
+
+export interface DbReservationBlock {
+  id: string;
+  group_reservation_id: string;
+  room_id: string;
+  room_type_id: string;
+  hold_until: Timestamp;
+  released_at: Timestamp | null;
+  status: DbReservationBlockStatus;
+  created_by: string | null;
+  created_at: Timestamp;
+}
+
+export type DbGroupTimelineEventType =
+  | "group_created"
+  | "company_updated"
+  | "reservation_added"
+  | "reservation_removed"
+  | "room_assigned"
+  | "room_changed"
+  | "guest_assigned"
+  | "guest_checked_in"
+  | "guest_checked_out"
+  | "deposit_paid"
+  | "invoice_generated"
+  | "receipt_printed"
+  | "payment_recorded"
+  | "refund"
+  | "pos_room_charge"
+  | "minibar_charge"
+  | "restaurant_charge"
+  | "laundry_charge"
+  | "issue_created"
+  | "issue_closed"
+  | "reservation_cancelled"
+  | "group_closed"
+  | "block_created"
+  | "block_released"
+  | "block_expired"
+  | "group_confirmed"
+  | "group_cancelled";
+
+export interface DbGroupTimelineEvent {
+  id: string;
+  group_reservation_id: string;
+  event_type: DbGroupTimelineEventType;
+  description: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  staff_id: string | null;
+  staff_name: string | null;
+  metadata: Record<string, unknown>;
+  created_at: Timestamp;
 }

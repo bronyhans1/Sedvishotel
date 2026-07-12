@@ -41,7 +41,12 @@ export async function loadReservationDetail(id: string) {
 
   const roomTypeOptions: ReservationRoomTypeOption[] = roomTypes
     .filter((rt) => rt.status === "active")
-    .map((rt) => ({ id: rt.id, name: rt.name }))
+    .map((rt) => ({
+      id: rt.id,
+      name: rt.name,
+      defaultPrice: rt.defaultPrice,
+      pricingRules: rt.pricingRules,
+    }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return {

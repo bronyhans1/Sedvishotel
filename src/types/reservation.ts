@@ -1,6 +1,8 @@
 import type { StayExtensionRecord } from "@/types/extend-stay";
 import type { RoomMoveRecord } from "@/types/room-move";
 
+import type { PricingMode, OverrideReason, ReservationPricingInput, RateOverrideHistoryEntry, PricingSource } from "@/types/pricing";
+
 export type ReservationStatus =
   | "pending"
   | "confirmed"
@@ -34,7 +36,20 @@ export type Reservation = {
   children: number;
   status: ReservationStatus;
   bookingSource: BookingSource;
+  rackRate: number;
   roomRate: number;
+  chargedRate: number;
+  discountAmount: number;
+  discountPercent: number;
+  pricingMode: PricingMode;
+  pricingSource: PricingSource;
+  pricingRuleId: string | null;
+  overrideReason: OverrideReason | null;
+  overrideReasonDetail: string | null;
+  overriddenById: string | null;
+  approvedById: string | null;
+  overrideAt: string | null;
+  rateOverrideHistory: RateOverrideHistoryEntry[];
   numberOfNights: number;
   subtotal: number;
   taxes: number;
@@ -79,6 +94,7 @@ export type ReservationFormValues = {
   children: number;
   bookingSource: BookingSource;
   status: ReservationStatus;
+  pricing?: ReservationPricingInput;
 };
 
 export type ReservationTimelineEvent = {

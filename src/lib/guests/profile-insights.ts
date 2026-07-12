@@ -1,4 +1,5 @@
 import { nightsBetween } from "@/lib/utils";
+import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
 import type { Guest } from "@/types/guest";
 import type { Reservation, ReservationStatus } from "@/types/reservation";
 
@@ -68,7 +69,11 @@ export function computeGuestProfileInsights(
 
   const totalNightsStayed = completedStays.reduce(
     (sum, reservation) =>
-      sum + nightsBetween(reservation.checkInDate, reservation.checkOutDate),
+      sum +
+      nightsBetween(
+        reservation.checkInDate,
+        resolveEffectiveCheckOutDate(reservation)
+      ),
     0
   );
 
@@ -95,7 +100,11 @@ export function computeGuestProfileInsights(
     currentStatus: guest.guestStatus,
     firstStay: sortedCompleted[0]?.checkInDate ?? null,
     lastStay:
-      sortedCompleted[sortedCompleted.length - 1]?.checkOutDate ?? null,
+      sortedCompleted.length > 0
+        ? resolveEffectiveCheckOutDate(
+            sortedCompleted[sortedCompleted.length - 1]
+          )
+        : null,
     currentReservationNumber: activeReservation?.reservationNumber ?? null,
     currentRoom:
       guest.guestStatus === "in_house"

@@ -29,6 +29,22 @@ export type LateCheckOutActionResult =
   | { success: true }
   | { success: false; error: string };
 
+function toEarlyCheckoutDevelopmentError(err: unknown): string {
+  if (process.env.NODE_ENV === "production") {
+    return toSafeActionError(err);
+  }
+
+  if (err instanceof Error) {
+    return err.stack ?? `${err.name}: ${err.message}`;
+  }
+
+  try {
+    return JSON.stringify(err, null, 2);
+  } catch {
+    return String(err);
+  }
+}
+
 function revalidateCheckoutPaths(reservationId: string) {
   revalidatePath("/dashboard/check-out");
   revalidatePath("/dashboard/stays");
@@ -110,7 +126,14 @@ export async function completeEarlyCheckOutAction(
     return { success: true };
   } catch (err) {
     unstable_rethrow(err);
-    return { success: false, error: toSafeActionError(err) };
+    console.error("[early-checkout-runtime]", "completeEarlyCheckOutAction ERROR", {
+      reservationId,
+      error:
+        err instanceof Error
+          ? { name: err.name, message: err.message, stack: err.stack, cause: err.cause }
+          : { value: err },
+    });
+    return { success: false, error: toEarlyCheckoutDevelopmentError(err) };
   }
 }
 

@@ -127,6 +127,8 @@ export type RefundFormValues = {
   reason: string;
   notes: string;
   idempotencyKey?: string;
+  /** When true, check_out.edit satisfies refund authorization (checkout workflow). */
+  authorizedByCheckout?: boolean;
 };
 
 export const PAYMENT_STATUS_OPTIONS: { value: PaymentStatus; label: string }[] =

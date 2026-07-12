@@ -36,7 +36,9 @@ export type DbPermissionModule =
   | "products"
   | "inventory"
   | "pos"
-  | "guest_folio";
+  | "guest_folio"
+  | "group_reservations"
+  | "corporate_accounts";
 
 export type DbRoleId = "admin" | "manager" | "receptionist" | "housekeeping";
 
@@ -79,6 +81,26 @@ export type DbBookingSource =
   | "phone"
   | "whatsapp"
   | "travel_agent";
+
+export type DbPricingMode =
+  | "standard"
+  | "without_ac"
+  | "corporate_rate"
+  | "long_stay"
+  | "promotion"
+  | "vip"
+  | "returning_guest"
+  | "complimentary"
+  | "staff_rate"
+  | "manual_override";
+
+export type DbPricingRuleStatus = "active" | "inactive" | "expired";
+
+export type DbPricingSource =
+  | "room_type_default"
+  | "pricing_rule"
+  | "manual_override"
+  | "complimentary";
 
 export type DbBookingRequestStatus =
   | "pending"
@@ -123,7 +145,10 @@ export type DbNotificationType =
   | "system_alert"
   | "check_in_alert"
   | "check_out_alert"
-  | "shift_handover_alert";
+  | "shift_handover_alert"
+  | "group_alert"
+  | "corporate_alert"
+  | "block_alert";
 
 export type DbNotificationPriority = "low" | "medium" | "high" | "critical";
 
@@ -140,6 +165,7 @@ export const ActivityActionCodes = {
   RESERVATION_LATE_CHECKOUT: "reservation.late_checkout",
   RESERVATION_EXTEND_STAY: "reservation.extend_stay",
   RESERVATION_ROOM_MOVE: "reservation.room_move",
+  RESERVATION_RATE_OVERRIDE: "reservation.rate_override",
   PAYMENT_RECORDED: "payment.recorded",
   PAYMENT_UPDATED: "payment.updated",
   PAYMENT_REFUNDED: "payment.refunded",
@@ -228,6 +254,22 @@ export const ActivityActionCodes = {
   GUEST_CREATED: "guest.created",
   GUEST_UPDATED: "guest.updated",
   GUEST_ARCHIVED: "guest.archived",
+  GROUP_CREATED: "group.created",
+  GROUP_UPDATED: "group.updated",
+  GROUP_CANCELLED: "group.cancelled",
+  GROUP_CLOSED: "group.closed",
+  GROUP_ROOM_ADDED: "group.room_added",
+  GROUP_ROOM_REMOVED: "group.room_removed",
+  GROUP_ROOM_ASSIGNED: "group.room_assigned",
+  GROUP_GUEST_ADDED: "group.guest_added",
+  GROUP_CHECKIN: "group.checkin",
+  GROUP_CHECKOUT: "group.checkout",
+  GROUP_PAYMENT: "group.payment",
+  GROUP_INVOICE: "group.invoice",
+  GROUP_RECEIPT: "group.receipt",
+  CORPORATE_CREATED: "corporate.created",
+  CORPORATE_UPDATED: "corporate.updated",
+  CORPORATE_ARCHIVED: "corporate.archived",
 } as const;
 
 export type ActivityActionCode =

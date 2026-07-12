@@ -4,6 +4,7 @@ import { SupabaseGuestRepository } from "@/repositories/supabase/guest.repositor
 import { SupabasePaymentRepository } from "@/repositories/supabase/payment.repository";
 import { SupabaseReservationRepository } from "@/repositories/supabase/reservation.repository";
 import { SupabaseRoomRepository } from "@/repositories/supabase/room.repository";
+import { SupabaseRoomTypePricingRuleRepository } from "@/repositories/supabase/room-type-pricing-rule.repository";
 import { SupabaseSettingsRepository } from "@/repositories/supabase/settings.repository";
 import { WalkInService } from "@/services/walk-in.service";
 
@@ -19,6 +20,7 @@ export async function getWalkInService(): Promise<WalkInService> {
     new SupabasePaymentRepository(client),
     new SupabaseActivityLogRepository(client),
     new SupabaseSettingsRepository(client),
-    folios
+    folios,
+    new SupabaseRoomTypePricingRuleRepository(client)
   );
 }

@@ -16,6 +16,19 @@ function buildReservation(
     | "roomTypeName"
     | "floorLabel"
     | "roomRate"
+    | "rackRate"
+    | "chargedRate"
+    | "discountAmount"
+    | "discountPercent"
+    | "pricingMode"
+    | "overrideReason"
+    | "overrideReasonDetail"
+    | "overriddenById"
+    | "approvedById"
+    | "overrideAt"
+    | "rateOverrideHistory"
+    | "pricingSource"
+    | "pricingRuleId"
     | "numberOfNights"
     | "subtotal"
     | "taxes"
@@ -65,6 +78,19 @@ function buildReservation(
     stayExtensionHistory: [],
     roomMoveHistory: [],
     roomRate: rate,
+    rackRate: rate,
+    chargedRate: rate,
+    discountAmount: 0,
+    discountPercent: 0,
+    pricingMode: "standard",
+    pricingSource: "room_type_default",
+    pricingRuleId: null,
+    overrideReason: null,
+    overrideReasonDetail: null,
+    overriddenById: null,
+    approvedById: null,
+    overrideAt: null,
+    rateOverrideHistory: [],
     roomTypeId: roomType?.id ?? "",
     roomTypeName: roomType?.name ?? "Unknown",
     floorLabel: room?.floorLabel ?? "",

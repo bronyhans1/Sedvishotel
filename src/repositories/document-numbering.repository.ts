@@ -1,4 +1,4 @@
-export type DocumentKind = "invoice" | "receipt";
+export type DocumentKind = "invoice" | "receipt" | "group_reservation" | "corporate_account";
 
 export type DocumentSequenceState = {
   kind: DocumentKind;

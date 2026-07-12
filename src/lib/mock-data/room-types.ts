@@ -34,6 +34,7 @@ export const mockRoomTypes: RoomType[] = [
     amenities: ["Wi-Fi", "Air Conditioning", "Smart TV", "Work Desk"],
     status: "active",
     assignedRoomNumbers: ROOM_TYPE_ASSIGNMENTS["standard-single"],
+    pricingRules: [],
   },
   {
     id: "standard-double",
@@ -46,6 +47,7 @@ export const mockRoomTypes: RoomType[] = [
     amenities: ["Wi-Fi", "Air Conditioning", "Smart TV", "Mini Fridge"],
     status: "active",
     assignedRoomNumbers: ROOM_TYPE_ASSIGNMENTS["standard-double"],
+    pricingRules: [],
   },
   {
     id: "deluxe",
@@ -64,6 +66,7 @@ export const mockRoomTypes: RoomType[] = [
     ],
     status: "active",
     assignedRoomNumbers: ROOM_TYPE_ASSIGNMENTS.deluxe,
+    pricingRules: [],
   },
   {
     id: "executive",
@@ -83,6 +86,7 @@ export const mockRoomTypes: RoomType[] = [
     ],
     status: "active",
     assignedRoomNumbers: ROOM_TYPE_ASSIGNMENTS.executive,
+    pricingRules: [],
   },
   {
     id: "family-suite",
@@ -102,6 +106,7 @@ export const mockRoomTypes: RoomType[] = [
     ],
     status: "active",
     assignedRoomNumbers: ROOM_TYPE_ASSIGNMENTS["family-suite"],
+    pricingRules: [],
   },
 ];
 

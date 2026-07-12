@@ -1,16 +1,19 @@
+import { getTodayDateString } from "@/lib/dates/today";
+import { sessionHasPermission } from "@/lib/auth/permissions";
 import {
   formValuesToInsert,
   formValuesToUpdate,
   mapDbRoomTypeToRoomType,
 } from "@/lib/room-types/mapper";
 import { slugifyRoomTypeName } from "@/lib/room-types/slug";
-import { sessionHasPermission } from "@/lib/auth/permissions";
+import type { IRoomTypePricingRuleRepository } from "@/repositories/room-type-pricing-rule.repository";
 import type { IActivityLogRepository } from "@/repositories/activity-log.repository";
 import type { IRoomTypeRepository } from "@/repositories/room-type.repository";
 import type { AuthSession } from "@/services/auth.service";
 import { ServiceError } from "@/services/types";
 import type { ServiceContext } from "@/services/types";
 import { ActivityActionCodes } from "@/types/database/enums";
+import type { DbPricingMode } from "@/types/database";
 import type { RoomType, RoomTypeFormValues } from "@/types/room-type";
 
 export interface IRoomTypeService {
@@ -51,7 +54,8 @@ export interface IRoomTypeService {
 export class RoomTypeService implements IRoomTypeService {
   constructor(
     private readonly roomTypes: IRoomTypeRepository,
-    private readonly activityLogs: IActivityLogRepository
+    private readonly activityLogs: IActivityLogRepository,
+    private readonly pricingRules?: IRoomTypePricingRuleRepository
   ) {}
 
   private require(
@@ -75,10 +79,46 @@ export class RoomTypeService implements IRoomTypeService {
     return row;
   }
 
+  private async loadRules(roomTypeId: string) {
+    if (!this.pricingRules) return [];
+    return this.pricingRules.getByRoomTypeId(roomTypeId, {
+      includeInactive: true,
+    });
+  }
+
   private async toRoomType(row: Awaited<ReturnType<IRoomTypeRepository["getById"]>>) {
     if (!row) return null;
     const numbers = await this.roomTypes.getAssignedRoomNumbers(row.id);
-    return mapDbRoomTypeToRoomType(row, numbers);
+    const rules = await this.loadRules(row.id);
+    return mapDbRoomTypeToRoomType(row, numbers, rules);
+  }
+
+  private async savePricingPresets(
+    roomTypeId: string,
+    values: RoomTypeFormValues
+  ): Promise<void> {
+    if (!this.pricingRules) return;
+
+    for (const preset of values.pricingPresets) {
+      if (!preset.configured || preset.rate == null) {
+        const active = await this.pricingRules.getActiveRule(
+          roomTypeId,
+          preset.pricingMode as DbPricingMode
+        );
+        if (active) {
+          await this.pricingRules.setRuleStatus(active.id, "inactive", false);
+        }
+        continue;
+      }
+
+      await this.pricingRules.createVersion({
+        room_type_id: roomTypeId,
+        pricing_mode: preset.pricingMode as DbPricingMode,
+        rate: preset.rate,
+        effective_from: preset.effectiveFrom ?? getTodayDateString(),
+        effective_to: preset.effectiveTo ?? null,
+      });
+    }
   }
 
   private async log(
@@ -109,7 +149,8 @@ export class RoomTypeService implements IRoomTypeService {
     return Promise.all(
       rows.map(async (row) => {
         const numbers = await this.roomTypes.getAssignedRoomNumbers(row.id);
-        return mapDbRoomTypeToRoomType(row, numbers);
+        const rules = await this.loadRules(row.id);
+        return mapDbRoomTypeToRoomType(row, numbers, rules);
       })
     );
   }
@@ -146,6 +187,8 @@ export class RoomTypeService implements IRoomTypeService {
       formValuesToInsert(values, slug, sortOrder)
     );
 
+    await this.savePricingPresets(row.id, values);
+
     await this.log(ctx, session, {
       action: `Created room type ${row.name}`,
       actionCode: ActivityActionCodes.ROOM_TYPE_CREATED,
@@ -153,7 +196,8 @@ export class RoomTypeService implements IRoomTypeService {
       metadata: { slug: row.slug, name: row.name },
     });
 
-    return mapDbRoomTypeToRoomType(row, []);
+    const rules = await this.loadRules(row.id);
+    return mapDbRoomTypeToRoomType(row, [], rules);
   }
 
   async update(
@@ -165,6 +209,7 @@ export class RoomTypeService implements IRoomTypeService {
     this.require(session, "edit");
     const row = await this.resolveRow(idOrSlug);
     const updated = await this.roomTypes.update(row.id, formValuesToUpdate(values));
+    await this.savePricingPresets(updated.id, values);
 
     await this.log(ctx, session, {
       action: `Updated room type ${updated.name}`,
@@ -174,7 +219,8 @@ export class RoomTypeService implements IRoomTypeService {
     });
 
     const numbers = await this.roomTypes.getAssignedRoomNumbers(updated.id);
-    return mapDbRoomTypeToRoomType(updated, numbers);
+    const rules = await this.loadRules(updated.id);
+    return mapDbRoomTypeToRoomType(updated, numbers, rules);
   }
 
   async archive(
@@ -195,7 +241,8 @@ export class RoomTypeService implements IRoomTypeService {
     });
 
     const numbers = await this.roomTypes.getAssignedRoomNumbers(archived.id);
-    return mapDbRoomTypeToRoomType(archived, numbers);
+    const rules = await this.loadRules(archived.id);
+    return mapDbRoomTypeToRoomType(archived, numbers, rules);
   }
 
   async getDeleteBlockers(

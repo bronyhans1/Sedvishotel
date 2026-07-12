@@ -51,6 +51,10 @@ export function RevenuePageContent({ data }: RevenuePageContentProps) {
           <CardHeader><CardTitle>Revenue by Payment Method</CardTitle></CardHeader>
           <CardContent><SimpleBarChart data={data.byPaymentMethod} monetary /></CardContent>
         </Card>
+        <Card>
+          <CardHeader><CardTitle>Discount by Pricing Mode</CardTitle></CardHeader>
+          <CardContent><SimpleBarChart data={data.discountByPricingMode} monetary /></CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

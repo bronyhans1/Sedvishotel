@@ -33,7 +33,7 @@ export function mapDbSalePaymentToPosSalePayment(
 
 export function mapDbSaleToPosSale(
   row: DbSaleWithRelations,
-  paymentStatus = row.payment_status
+  paymentStatus: PosSale["paymentStatus"]
 ): PosSale {
   return {
     id: row.id,
@@ -69,7 +69,7 @@ function paymentMethodLabel(method: PosSalePayment["paymentMethod"]): string {
 
 export function mapDbSaleToHistoryItem(
   row: DbSaleWithRelations,
-  paymentStatus = row.payment_status
+  paymentStatus: PosSaleHistoryItem["paymentStatus"]
 ): PosSaleHistoryItem {
   const payment = row.payments?.[0] ?? null;
   const paymentMethod: PosSalePayment["paymentMethod"] | null =

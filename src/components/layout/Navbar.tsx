@@ -7,7 +7,6 @@ import {
   LogOut,
   Menu,
   Moon,
-  Search,
   Sun,
   User,
 } from "lucide-react";
@@ -30,7 +29,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { GlobalGroupSearch } from "@/components/search/GlobalGroupSearch";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Sidebar } from "@/components/layout/Sidebar";
 import type { Notification } from "@/types/notification";
@@ -93,15 +92,7 @@ export function Navbar({ user, onMenuClick, notifications = [], navBadges = {} }
         </p>
       </div>
 
-      <div className="relative mx-auto hidden w-full max-w-md md:block">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          placeholder="Search guests, rooms, reservations..."
-          className="pl-9"
-          disabled
-        />
-      </div>
+      <GlobalGroupSearch />
 
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
         <Button

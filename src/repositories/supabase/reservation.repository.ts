@@ -217,8 +217,45 @@ export class SupabaseReservationRepository implements IReservationRepository {
       (bookedData ?? []).map((r) => String(r.room_id))
     );
 
+    const { data: blockedData, error: blockedError } = await this.client
+      .from("reservation_blocks")
+      .select("room_id, group_reservation_id, hold_until")
+      .eq("status", "blocked")
+      .gt("hold_until", new Date().toISOString());
+
+    if (blockedError) {
+      throw new Error(`Failed to check reservation blocks: ${blockedError.message}`);
+    }
+
+    let blockedRoomIds = new Set<string>();
+    if ((blockedData ?? []).length > 0) {
+      const groupIds = [
+        ...new Set((blockedData ?? []).map((row) => String(row.group_reservation_id))),
+      ];
+      const { data: groups, error: groupError } = await this.client
+        .from("group_reservations")
+        .select("id, arrival_date, departure_date")
+        .in("id", groupIds);
+
+      if (groupError) {
+        throw new Error(`Failed to load groups for blocks: ${groupError.message}`);
+      }
+
+      const overlappingGroupIds = new Set(
+        (groups ?? [])
+          .filter((g) => g.arrival_date < checkOut && g.departure_date > checkIn)
+          .map((g) => String(g.id))
+      );
+
+      blockedRoomIds = new Set(
+        (blockedData ?? [])
+          .filter((row) => overlappingGroupIds.has(String(row.group_reservation_id)))
+          .map((row) => String(row.room_id))
+      );
+    }
+
     return rooms
-      .filter((room) => !bookedRoomIds.has(room.id))
+      .filter((room) => !bookedRoomIds.has(room.id) && !blockedRoomIds.has(room.id))
       .map((room) => room.id);
   }
 

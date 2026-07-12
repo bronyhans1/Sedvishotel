@@ -32,6 +32,7 @@ const initial: RoomTypeFormValues = {
   defaultPrice: 0,
   capacity: 1,
   amenities: "",
+  pricingPresets: [],
 };
 
 export function AddRoomTypeModal({

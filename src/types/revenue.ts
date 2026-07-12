@@ -1,3 +1,11 @@
+export type DiscountRevenueMetrics = {
+  rackRevenue: number;
+  netRevenue: number;
+  discountGiven: number;
+  overrideAmount: number;
+  averageDiscountPercent: number;
+};
+
 export type RevenueKpis = {
   revenueToday: number;
   revenueWeek: number;
@@ -8,7 +16,7 @@ export type RevenueKpis = {
   outstandingBalances: number;
   paidInvoices: number;
   unpaidInvoices: number;
-};
+} & DiscountRevenueMetrics;
 
 export type ChartDataPoint = {
   label: string;
@@ -28,5 +36,7 @@ export type RevenueData = {
   weeklyTrend: ChartDataPoint[];
   byRoomType: ChartDataPoint[];
   byPaymentMethod: ChartDataPoint[];
+  discountByPricingMode: ChartDataPoint[];
+  discountByOverrideReason: ChartDataPoint[];
   insights: RevenueInsights;
 };

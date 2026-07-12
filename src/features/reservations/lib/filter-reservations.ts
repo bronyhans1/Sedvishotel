@@ -1,4 +1,5 @@
 import type { Reservation, ReservationStatus, BookingSource } from "@/types/reservation";
+import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
 
 export type BookingSourceFilter = BookingSource | "all" | "reception";
 
@@ -34,7 +35,8 @@ export function filterReservations(
     if (params.roomTypeId !== "all" && r.roomTypeId !== params.roomTypeId)
       return false;
 
-    if (params.dateFrom && r.checkOutDate < params.dateFrom) return false;
+    if (params.dateFrom && resolveEffectiveCheckOutDate(r) < params.dateFrom)
+      return false;
     if (params.dateTo && r.checkInDate > params.dateTo) return false;
 
     if (search) {

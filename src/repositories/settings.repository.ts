@@ -13,6 +13,7 @@ export interface TaxAndChargeSettings {
   currency: string;
   taxRate: number;
   serviceCharge: number;
+  requireRateOverrideApproval?: boolean;
 }
 
 export interface OperatingHoursSettings {

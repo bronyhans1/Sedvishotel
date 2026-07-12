@@ -1,9 +1,10 @@
 import { PAYMENT_METHOD_LABELS } from "@/lib/analytics/payment-labels";
+import { computeDiscountAnalytics } from "@/lib/analytics/discount-analytics";
 import { computeOccupancyRate } from "@/lib/occupancy";
 import type { Invoice } from "@/types/invoice";
 import type { Payment } from "@/types/payment";
 import type { Reservation } from "@/types/reservation";
-import type { ChartDataPoint, RevenueData } from "@/types/revenue";
+import type { ChartDataPoint, RevenueData, DiscountRevenueMetrics } from "@/types/revenue";
 import type { Room } from "@/types/room";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -177,6 +178,15 @@ export function computeRevenueData(input: {
     [...roomTypeReservationCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ??
     "—";
 
+  const discountAnalytics = computeDiscountAnalytics(input.reservations);
+  const discountMetrics: DiscountRevenueMetrics = {
+    rackRevenue: discountAnalytics.rackRevenue,
+    netRevenue: discountAnalytics.netRevenue,
+    discountGiven: discountAnalytics.discountGiven,
+    overrideAmount: discountAnalytics.overrideAmount,
+    averageDiscountPercent: discountAnalytics.averageDiscountPercent,
+  };
+
   return {
     kpis: {
       revenueToday,
@@ -188,11 +198,14 @@ export function computeRevenueData(input: {
       outstandingBalances,
       paidInvoices,
       unpaidInvoices,
+      ...discountMetrics,
     },
     monthlyTrend,
     weeklyTrend,
     byRoomType,
     byPaymentMethod,
+    discountByPricingMode: discountAnalytics.byPricingMode,
+    discountByOverrideReason: discountAnalytics.byOverrideReason,
     insights: {
       bestPerformingRoomType,
       highestRevenueDay,

@@ -1,10 +1,43 @@
-import type { DbRoomType } from "@/types/database";
+import type { DbRoomType, DbRoomTypePricingRule } from "@/types/database";
 import type { RoomType, RoomTypeFormValues } from "@/types/room-type";
+import {
+  mapDbPricingRules,
+  resolveActivePricingRule,
+} from "@/lib/reservations/rate-management";
+import {
+  ROOM_TYPE_PRESET_MODES,
+  type RoomTypePricingPresetForm,
+} from "@/types/pricing";
+import { getTodayDateString } from "@/lib/dates/today";
+
+export function buildPricingPresetsFromRules(
+  rules: ReturnType<typeof mapDbPricingRules>,
+  asOfDate: string = getTodayDateString()
+): RoomTypePricingPresetForm[] {
+  return ROOM_TYPE_PRESET_MODES.map((mode) => {
+    const active = resolveActivePricingRule(rules, mode, asOfDate);
+    if (!active) {
+      return { pricingMode: mode, configured: false };
+    }
+    return {
+      pricingMode: mode,
+      configured: true,
+      rate: active.rate,
+      effectiveFrom: active.effectiveFrom,
+      effectiveTo: active.effectiveTo,
+      ruleId: active.id,
+      status: active.status,
+    };
+  });
+}
 
 export function mapDbRoomTypeToRoomType(
   row: DbRoomType,
-  assignedRoomNumbers: string[]
+  assignedRoomNumbers: string[],
+  pricingRules: DbRoomTypePricingRule[] = []
 ): RoomType {
+  const rules = mapDbPricingRules(pricingRules);
+
   return {
     id: row.slug,
     uuid: row.id,
@@ -15,6 +48,7 @@ export function mapDbRoomTypeToRoomType(
     amenities: Array.isArray(row.amenities) ? row.amenities : [],
     status: row.status,
     assignedRoomNumbers,
+    pricingRules: rules,
   };
 }
 

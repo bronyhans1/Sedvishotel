@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 
 import { PosAtomicError } from "@/lib/pos/atomic-commit";
 import { mapDbSaleToHistoryItem, mapDbSaleToPosSale } from "@/lib/pos/mapper";
+import { resolveSalePaymentStatuses } from "@/lib/pos/resolve-sale-payment-status";
 import { assertReservationEligibleForRoomCharge } from "@/lib/pos/room-charge-validation";
 import { buildPosCartSettlement, isProductSellable } from "@/lib/pos/settlement";
 import { mapDbProductToProduct } from "@/lib/products/mapper";
@@ -11,6 +12,9 @@ import type { IPosRepository, PosSaleListFilters } from "@/repositories/pos.repo
 import type { PaginatedResult, PaginationParams } from "@/repositories/types";
 import type { IProductRepository } from "@/repositories/product.repository";
 import type { IReservationRepository } from "@/repositories/reservation.repository";
+import { resolvePosFolioRouting } from "@/lib/group-reservations/resolve-pos-folio";
+import type { IGroupReservationRepository } from "@/repositories/group-reservation.repository";
+import type { IGuestFolioRepository } from "@/repositories/guest-folio.repository";
 import type { AuthSession } from "@/services/auth.service";
 import { ServiceError } from "@/services/types";
 import type { ServiceContext } from "@/services/types";
@@ -60,7 +64,9 @@ export class PosService implements IPosService {
     private readonly products: IProductRepository,
     private readonly reservations: IReservationRepository,
     private readonly activityLogs: IActivityLogRepository,
-    private readonly folios?: import("@/services/guest-folio.service").IGuestFolioService
+    private readonly folios?: import("@/services/guest-folio.service").IGuestFolioService,
+    private readonly groupReservations?: IGroupReservationRepository,
+    private readonly folioRepo?: IGuestFolioRepository
   ) {}
 
   private require(
@@ -102,22 +108,21 @@ export class PosService implements IPosService {
   private async resolvePaymentStatus(
     sale: Awaited<ReturnType<IPosRepository["getById"]>>
   ): Promise<SalePaymentStatus> {
-    if (
-      !sale ||
-      sale.payment_status === "void" ||
-      sale.customer_type !== "room_charge" ||
-      !sale.reservation_id ||
-      !this.folios
-    ) {
-      return sale?.payment_status ?? "pending";
-    }
+    if (!sale) return "pending";
 
-    const settlement = await this.folios.getRecordedSettlement(sale.reservation_id);
-    if (!settlement || settlement.totalAmount <= 0) {
-      return sale.payment_status;
-    }
-
-    return settlement.outstandingBalance <= 0 ? "paid" : "pending";
+    const statuses = await resolveSalePaymentStatuses(
+      [sale],
+      async (reservationId) => {
+        if (!this.folios) return null;
+        const settlement = await this.folios.getRecordedSettlement(reservationId);
+        if (!settlement) return null;
+        return {
+          totalAmount: settlement.totalAmount,
+          outstandingBalance: settlement.outstandingBalance,
+        };
+      }
+    );
+    return statuses[0] ?? "pending";
   }
 
   async getSale(
@@ -140,24 +145,17 @@ export class PosService implements IPosService {
   ): Promise<PaginatedResult<PosSaleHistoryItem>> {
     this.require(session, "view");
     const result = await this.pos.findAll(filters, pagination);
-    const roomChargeStatuses = new Map<string, Promise<SalePaymentStatus>>();
-    const paymentStatuses = await Promise.all(
-      result.data.map((sale) => {
-        if (
-          sale.customer_type !== "room_charge" ||
-          sale.payment_status === "void" ||
-          !sale.reservation_id
-        ) {
-          return this.resolvePaymentStatus(sale);
-        }
-
-        const existing = roomChargeStatuses.get(sale.reservation_id);
-        if (existing) return existing;
-
-        const resolved = this.resolvePaymentStatus(sale);
-        roomChargeStatuses.set(sale.reservation_id, resolved);
-        return resolved;
-      })
+    const paymentStatuses = await resolveSalePaymentStatuses(
+      result.data,
+      async (reservationId) => {
+        if (!this.folios) return null;
+        const settlement = await this.folios.getRecordedSettlement(reservationId);
+        if (!settlement) return null;
+        return {
+          totalAmount: settlement.totalAmount,
+          outstandingBalance: settlement.outstandingBalance,
+        };
+      }
     );
     return {
       ...result,
@@ -257,6 +255,27 @@ export class PosService implements IPosService {
 
     const saleId = randomUUID();
 
+    let postFolioDebit = input.customerType === "room_charge";
+    let targetFolioId: string | undefined;
+
+    if (
+      input.customerType === "room_charge" &&
+      input.reservationId &&
+      this.groupReservations &&
+      this.folioRepo
+    ) {
+      const routing = await resolvePosFolioRouting(
+        {
+          reservations: this.reservations,
+          groups: this.groupReservations,
+          folios: this.folioRepo,
+        },
+        input.reservationId
+      );
+      postFolioDebit = routing.postFolioDebitInRpc;
+      targetFolioId = routing.targetFolioId;
+    }
+
     const commitResult = await this.pos.commitSaleAtomically({
       idempotencyKey: input.idempotencyKey,
       saleId,
@@ -275,7 +294,7 @@ export class PosService implements IPosService {
       notes: input.notes ?? null,
       paymentMethod: input.paymentMethod,
       paymentReference: input.paymentReference ?? null,
-      postFolioDebit: input.customerType === "room_charge",
+      postFolioDebit,
       items: input.lines.map((line, index) => {
         const settled = settlement.lines[index];
         return {
@@ -318,6 +337,19 @@ export class PosService implements IPosService {
     const row = await this.pos.getById(commitResult.saleId);
     if (!row) {
       throw new PosAtomicError();
+    }
+
+    if (
+      !commitResult.idempotentReplay &&
+      input.customerType === "room_charge" &&
+      input.reservationId &&
+      targetFolioId &&
+      this.folios
+    ) {
+      await this.folios.postPosRoomCharge(ctx, session, row, {
+        internal: true,
+        targetFolioId,
+      });
     }
 
     if (

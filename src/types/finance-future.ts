@@ -1,5 +1,5 @@
 /**
- * Architecture preparation for SHMS v2.2.0 corporate & group reservations.
+ * Architecture preparation for SHMS v2.3.0 corporate & group reservations.
  * No UI or workflow — types and metadata contracts only.
  */
 
@@ -70,4 +70,55 @@ export type PaymentReversalMetadata = {
   reversedBy?: string | null;
   reversedAt?: string | null;
   reversalReference?: string | null;
+};
+
+/** v2.3.0 group reservation contracts — schema/UI not yet implemented. */
+
+export type GroupReservationType =
+  | "corporate"
+  | "government"
+  | "ngo"
+  | "school"
+  | "church"
+  | "sports_team"
+  | "conference"
+  | "wedding"
+  | "tour"
+  | "other";
+
+export type GroupReservationStatus =
+  | "draft"
+  | "confirmed"
+  | "partially_checked_in"
+  | "in_house"
+  | "partially_checked_out"
+  | "completed"
+  | "cancelled";
+
+export type GroupBillingPolicy =
+  | "company_pays_all"
+  | "guest_pays_all"
+  | "company_pays_accommodation"
+  | "guest_pays_extras"
+  | "mixed_billing"
+  | "pay_at_check_out"
+  | "deposit"
+  | "credit"
+  | "complimentary";
+
+export type GroupReservationRef = {
+  groupReservationId: string;
+  groupNumber: string;
+  groupName: string;
+  groupType: GroupReservationType;
+  status: GroupReservationStatus;
+  masterReservationId?: string;
+  masterFolioId?: string;
+  corporateAccount?: CorporateAccountRef;
+  billingPolicy: GroupBillingPolicy;
+  arrivalDate: string;
+  departureDate: string;
+  expectedGuests: number;
+  expectedRooms: number;
+  childReservationIds: string[];
 };

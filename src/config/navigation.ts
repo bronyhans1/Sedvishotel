@@ -17,6 +17,7 @@ import {
   Wallet,
   TrendingUp,
   Moon,
+  Building2,
   Clock,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -68,10 +69,32 @@ export const mainNavigation: NavItem[] = [
   },
   {
     title: "Reservations",
-    href: "/dashboard/reservations",
     icon: CalendarDays,
     section: "Front Desk",
-    permission: "reservations",
+    children: [
+      {
+        title: "Individual Reservations",
+        href: "/dashboard/reservations",
+        permission: "reservations",
+      },
+      {
+        title: "Group Reservations",
+        href: "/dashboard/group-reservations",
+        permission: "group_reservations",
+      },
+    ],
+  },
+  {
+    title: "Corporate",
+    icon: Building2,
+    section: "Front Desk",
+    children: [
+      {
+        title: "Corporate Accounts",
+        href: "/dashboard/corporate-accounts",
+        permission: "corporate_accounts",
+      },
+    ],
   },
   {
     title: "Guests",

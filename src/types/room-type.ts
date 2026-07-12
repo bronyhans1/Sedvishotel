@@ -1,5 +1,7 @@
 export type RoomTypeStatus = "active" | "inactive";
 
+import type { RoomTypePricingPresetForm, RoomTypePricingRule } from "@/types/pricing";
+
 export type RoomType = {
   id: string;
   uuid: string;
@@ -10,6 +12,7 @@ export type RoomType = {
   amenities: string[];
   status: RoomTypeStatus;
   assignedRoomNumbers: string[];
+  pricingRules: RoomTypePricingRule[];
 };
 
 export type RoomTypeStats = {
@@ -25,4 +28,5 @@ export type RoomTypeFormValues = {
   defaultPrice: number;
   capacity: number;
   amenities: string;
+  pricingPresets: RoomTypePricingPresetForm[];
 };

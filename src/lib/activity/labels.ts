@@ -118,6 +118,22 @@ const ACTION_LABEL_OVERRIDES: Record<string, string> = {
   [ActivityActionCodes.BOOKING_REQUEST_CREATED]: "Booking request received",
   [ActivityActionCodes.BOOKING_REQUEST_CONVERTED]: "Booking request converted",
   [ActivityActionCodes.BOOKING_REQUEST_REJECTED]: "Booking request rejected",
+  [ActivityActionCodes.GROUP_CREATED]: "Group reservation created",
+  [ActivityActionCodes.GROUP_UPDATED]: "Group reservation updated",
+  [ActivityActionCodes.GROUP_CANCELLED]: "Group reservation cancelled",
+  [ActivityActionCodes.GROUP_CLOSED]: "Group reservation closed",
+  [ActivityActionCodes.GROUP_ROOM_ADDED]: "Room added to group",
+  [ActivityActionCodes.GROUP_ROOM_REMOVED]: "Room removed from group",
+  [ActivityActionCodes.GROUP_ROOM_ASSIGNED]: "Room assigned in group",
+  [ActivityActionCodes.GROUP_GUEST_ADDED]: "Guest added to group",
+  [ActivityActionCodes.GROUP_CHECKIN]: "Group check-in",
+  [ActivityActionCodes.GROUP_CHECKOUT]: "Group check-out",
+  [ActivityActionCodes.GROUP_PAYMENT]: "Group payment recorded",
+  [ActivityActionCodes.GROUP_INVOICE]: "Group invoice generated",
+  [ActivityActionCodes.GROUP_RECEIPT]: "Group receipt printed",
+  [ActivityActionCodes.CORPORATE_CREATED]: "Corporate account created",
+  [ActivityActionCodes.CORPORATE_UPDATED]: "Corporate account updated",
+  [ActivityActionCodes.CORPORATE_ARCHIVED]: "Corporate account archived",
 };
 
 const ACTION_LABELS: Record<string, string> = Object.fromEntries(

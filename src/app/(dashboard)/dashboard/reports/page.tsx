@@ -8,8 +8,8 @@ import { loadReportsPageData } from "@/features/reports/load-reports-page";
 export const metadata: Metadata = { title: "Reports" };
 
 async function ReportsPageLoader() {
-  const { data } = await loadReportsPageData();
-  return <ReportsPageContent data={data} />;
+  const { data, groupReports } = await loadReportsPageData();
+  return <ReportsPageContent data={data} groupReports={groupReports} />;
 }
 
 export default function ReportsPage() {

@@ -3,6 +3,7 @@ import {
   buildInvoiceLineItems,
   mapDbInvoiceToInvoice,
 } from "@/lib/invoices/mapper";
+import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
 import type { IActivityLogRepository } from "@/repositories/activity-log.repository";
 import type { IInvoiceRepository } from "@/repositories/invoice.repository";
 import type { IReservationRepository } from "@/repositories/reservation.repository";
@@ -148,10 +149,15 @@ export class InvoiceService implements IInvoiceService {
     }
 
     const roomCharges = Number(reservation.subtotal);
+    const rackRate = Number(reservation.rack_rate ?? reservation.room_rate);
+    const chargedRate = Number(reservation.room_rate);
+    const discounts = Math.max(
+      0,
+      (rackRate - chargedRate) * reservation.number_of_nights
+    );
     const taxes = Number(reservation.taxes);
     const serviceCharge = Number(reservation.service_charge);
     const additionalCharges = 0;
-    const discounts = 0;
     const totalAmount = Number(reservation.total_amount);
     const amountPaid = Number(reservation.amount_paid);
     const balance = Math.max(0, totalAmount - amountPaid);
@@ -174,7 +180,11 @@ export class InvoiceService implements IInvoiceService {
       guest_id: reservation.guest_id,
       invoice_date: new Date().toISOString().slice(0, 10),
       check_in_date: reservation.check_in_date,
-      check_out_date: reservation.check_out_date,
+      check_out_date: resolveEffectiveCheckOutDate({
+        status: reservation.status,
+        check_out_date: reservation.check_out_date,
+        actual_check_out_date: reservation.actual_check_out_date,
+      }),
       number_of_nights: reservation.number_of_nights,
       room_rate: Number(reservation.room_rate),
       room_charges: roomCharges,

@@ -1,6 +1,7 @@
 import { computeRevenueData } from "@/lib/analytics/revenue";
 import { roundCurrency } from "@/lib/payments/currency";
 import { computeFloorBreakdown, computeOccupancyFromRooms } from "@/lib/occupancy";
+import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
 import type { Guest } from "@/types/guest";
 import type { Invoice } from "@/types/invoice";
 import type { Payment } from "@/types/payment";
@@ -65,7 +66,9 @@ export function computeReportsData(input: {
 
   const stayDurations = input.reservations
     .filter((r) => r.status !== "cancelled")
-    .map((r) => nightsBetween(r.checkInDate, r.checkOutDate));
+    .map((r) =>
+      nightsBetween(r.checkInDate, resolveEffectiveCheckOutDate(r))
+    );
   const averageStayDuration =
     stayDurations.length > 0
       ? Math.round(

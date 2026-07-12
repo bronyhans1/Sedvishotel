@@ -50,10 +50,6 @@ export function computeEarlyCheckout(params: {
   const originalNights = params.originalNights;
   const actualNights = nightsBetween(checkInDate, actualCheckOutDate);
   const unusedNights = Math.max(0, originalNights - actualNights);
-  const refundAmount =
-    originalNights > 0
-      ? roundCurrency((unusedNights / originalNights) * params.totalAmount)
-      : 0;
 
   const actualPricing = computeStayPricing({
     roomRate: params.roomRate,
@@ -62,6 +58,17 @@ export function computeEarlyCheckout(params: {
     taxRate: params.taxRate,
     serviceChargeRate: params.serviceChargeRate,
   });
+
+  const proportionalRefund =
+    originalNights > 0
+      ? roundCurrency((unusedNights / originalNights) * params.totalAmount)
+      : 0;
+  const overpaymentRefund = roundCurrency(
+    Math.max(0, roundCurrency(params.amountPaid) - actualPricing.totalAmount)
+  );
+  const refundAmount = roundCurrency(
+    Math.min(proportionalRefund, overpaymentRefund)
+  );
 
   const actualBalance = roundCurrency(
     Math.max(0, actualPricing.totalAmount - roundCurrency(params.amountPaid))

@@ -5,6 +5,7 @@ import { ReservationStatusBadge } from "@/components/reservations/ReservationSta
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
+import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
 import { BOOKING_SOURCE_OPTIONS, type Reservation } from "@/types/reservation";
 
 const sourceLabels = Object.fromEntries(
@@ -55,7 +56,9 @@ export function ReservationTable({ reservations, canEdit, onEdit }: Props) {
                   {r.roomTypeName}
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap">{r.checkInDate}</td>
-                <td className="px-4 py-3 whitespace-nowrap">{r.checkOutDate}</td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {resolveEffectiveCheckOutDate(r)}
+                </td>
                 <td className="px-4 py-3">
                   <ReservationStatusBadge status={r.status} />
                 </td>

@@ -13,6 +13,11 @@ export const mockRevenueData: RevenueData = {
     outstandingBalances: 0,
     paidInvoices: 0,
     unpaidInvoices: 0,
+    rackRevenue: 28450,
+    netRevenue: 28450,
+    discountGiven: 0,
+    overrideAmount: 0,
+    averageDiscountPercent: 0,
   },
   monthlyTrend: [
     { label: "Jan", value: 22400 },
@@ -45,6 +50,8 @@ export const mockRevenueData: RevenueData = {
     { label: "Bank Transfer", value: 3800 },
     { label: "Online", value: 3500 },
   ],
+  discountByPricingMode: [],
+  discountByOverrideReason: [],
   insights: {
     bestPerformingRoomType: "Deluxe Room",
     highestRevenueDay: "Saturday",

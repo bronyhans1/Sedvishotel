@@ -5,6 +5,7 @@ import { resolvePaymentTransactionVat, toPaymentTransactionVatFields } from "@/l
 import { resolvePaymentStatusFromTotals } from "@/lib/payments/totals";
 import { roundCurrency } from "@/lib/payments/currency";
 import { normalizeRoomNumber } from "@/lib/rooms/floor-layout";
+import type { IRoomTypePricingRuleRepository } from "@/repositories/room-type-pricing-rule.repository";
 import type { IActivityLogRepository } from "@/repositories/activity-log.repository";
 import type { IGuestRepository } from "@/repositories/guest.repository";
 import type { IPaymentRepository } from "@/repositories/payment.repository";
@@ -21,7 +22,11 @@ import type {
   WalkInResult,
   WalkInRoomOption,
 } from "@/types/walk-in";
-import { nightsBetween } from "@/lib/utils";
+import {
+  buildReservationPricingSnapshot,
+  mapDbPricingRules,
+  serializeRateOverrideHistory,
+} from "@/lib/reservations/rate-management";
 import { resolveFloorLabel } from "@/lib/rooms/mapper";
 
 export interface IWalkInService {
@@ -58,7 +63,8 @@ export class WalkInService implements IWalkInService {
     private readonly payments: IPaymentRepository,
     private readonly activityLogs: IActivityLogRepository,
     private readonly settings: ISettingsRepository,
-    private readonly folios?: import("@/services/guest-folio.service").IGuestFolioService
+    private readonly folios?: import("@/services/guest-folio.service").IGuestFolioService,
+    private readonly pricingRules?: IRoomTypePricingRuleRepository
   ) {}
 
   private requireComplete(session: AuthSession): void {
@@ -296,12 +302,36 @@ export class WalkInService implements IWalkInService {
       });
     }
 
-    const roomRate = Number(room.room_type.default_price);
-    const numberOfNights = nightsBetween(values.checkInDate, values.checkOutDate);
-    const subtotal = roomRate * numberOfNights;
-    const discount = roundCurrency(values.discount ?? 0);
+    const rackRate = Number(room.room_type.default_price);
+    const rules = this.pricingRules
+      ? mapDbPricingRules(
+          await this.pricingRules.getByRoomTypeId(room.room_type_id)
+        )
+      : [];
     const taxSettings = await this.settings.getTaxAndCharges();
     const taxRate = taxSettings?.taxRate ?? 0.15;
+    const pricingSnapshot = buildReservationPricingSnapshot({
+      rackRate,
+      checkIn: values.checkInDate,
+      checkOut: values.checkOutDate,
+      pricingInput: {
+        pricingMode: values.pricingMode,
+        chargedRate: values.chargedRate,
+        overrideReason: values.overrideReason,
+        overrideReasonDetail: values.overrideReasonDetail,
+        approvedById: values.approvedById,
+      },
+      pricingRules: rules,
+      taxRate,
+      serviceChargeRate: 0,
+      userId: ctx.userId,
+      requireOverrideApproval: taxSettings?.requireRateOverrideApproval,
+      walkInVat: true,
+    });
+
+    const numberOfNights = pricingSnapshot.numberOfNights;
+    const subtotal = pricingSnapshot.subtotal;
+    const discount = roundCurrency(values.discount ?? 0);
     const globalVatEnabled = taxRate > 0;
     const vatApplied = globalVatEnabled && (values.vatApplied ?? true);
     const chargeBase = roundCurrency(Math.max(0, subtotal - discount));
@@ -321,7 +351,21 @@ export class WalkInService implements IWalkInService {
       children: 0,
       status: "checked_in",
       booking_source: "walk_in",
-      room_rate: roomRate,
+      rack_rate: pricingSnapshot.rackRate,
+      room_rate: pricingSnapshot.chargedRate,
+      discount_amount: pricingSnapshot.discountAmount,
+      discount_percent: pricingSnapshot.discountPercent,
+      pricing_mode: pricingSnapshot.pricingMode,
+      pricing_source: pricingSnapshot.pricingSource,
+      pricing_rule_id: pricingSnapshot.pricingRuleId,
+      override_reason: pricingSnapshot.overrideReason,
+      override_reason_detail: pricingSnapshot.overrideReasonDetail,
+      overridden_by: pricingSnapshot.overriddenById,
+      approved_by: pricingSnapshot.approvedById,
+      override_at: pricingSnapshot.overrideAt,
+      rate_override_history: serializeRateOverrideHistory(
+        pricingSnapshot.historyEntry ? [pricingSnapshot.historyEntry] : []
+      ),
       number_of_nights: numberOfNights,
       subtotal,
       taxes,
@@ -359,8 +403,30 @@ export class WalkInService implements IWalkInService {
       module: "reservations",
       entityType: "reservation",
       entityId: reservation.id,
-      metadata: { source: "walk_in", booking_source: "walk_in" },
+      metadata: {
+        source: "walk_in",
+        booking_source: "walk_in",
+        rack_rate: pricingSnapshot.rackRate,
+        charged_rate: pricingSnapshot.chargedRate,
+        pricing_mode: pricingSnapshot.pricingMode,
+      },
     });
+
+    if (pricingSnapshot.historyEntry) {
+      await this.log(ctx, session, {
+        action: `Rate override applied on ${reservation.reservation_number}`,
+        actionCode: ActivityActionCodes.RESERVATION_RATE_OVERRIDE,
+        module: "reservations",
+        entityType: "reservation",
+        entityId: reservation.id,
+        metadata: {
+          source: "walk_in",
+          rack_rate: pricingSnapshot.rackRate,
+          charged_rate: pricingSnapshot.chargedRate,
+          pricing_mode: pricingSnapshot.pricingMode,
+        },
+      });
+    }
 
     await this.log(ctx, session, {
       action: `Checked in ${reservation.reservation_number}`,

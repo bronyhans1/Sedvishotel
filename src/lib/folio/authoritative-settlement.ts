@@ -25,8 +25,10 @@ export function deriveAuthoritativeSettlement(
   let totalCredits = 0;
   for (const entry of entries) {
     if (entry.debitCredit === "debit") {
-      totalDebits = roundCurrency(totalDebits + entry.total);
-    } else {
+      if (entry.entryType !== "refund") {
+        totalDebits = roundCurrency(totalDebits + entry.total);
+      }
+    } else if (entry.entryType === "payment") {
       totalCredits = roundCurrency(totalCredits + entry.total);
     }
   }

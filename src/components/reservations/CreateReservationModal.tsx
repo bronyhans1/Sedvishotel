@@ -8,6 +8,7 @@ import { useLiveRefresh } from "@/hooks/use-live-refresh";
 import { useToast } from "@/hooks/use-toast";
 import type { ReservationRoomTypeOption } from "@/features/reservations/load-reservations-page";
 import { mapAvailableRoomsToReservationOptions } from "@/lib/rooms/available-room-options";
+import { ReservationPricingSection } from "@/components/pricing/ReservationPricingSection";
 import { SubmitButton } from "@/components/loading/SubmitButton";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +26,7 @@ import {
   RESERVATION_STATUS_OPTIONS,
   type ReservationFormValues,
 } from "@/types/reservation";
+import type { ReservationPricingInput } from "@/types/pricing";
 
 type Props = {
   open: boolean;
@@ -59,6 +61,9 @@ export function CreateReservationModal({
   const refresh = useLiveRefresh();
   const [values, setValues] = useState(initial);
   const [roomTypeId, setRoomTypeId] = useState("");
+  const [pricing, setPricing] = useState<ReservationPricingInput>({
+    pricingMode: "standard",
+  });
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
   const [submitError, setSubmitError] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -75,6 +80,18 @@ export function CreateReservationModal({
     [rooms]
   );
 
+  const selectedType = useMemo(
+    () => roomTypeOptions.find((rt) => rt.id === roomTypeId),
+    [roomTypeOptions, roomTypeId]
+  );
+
+  const selectedRoom = useMemo(
+    () => rooms.find((room) => room.roomNumber === values.roomNumber),
+    [rooms, values.roomNumber]
+  );
+
+  const rackRate = selectedRoom?.nightlyRate ?? selectedType?.defaultPrice ?? 0;
+
   useEffect(() => {
     if (!values.roomNumber) return;
     if (!roomOptions.some((room) => room.roomNumber === values.roomNumber)) {
@@ -86,6 +103,7 @@ export function CreateReservationModal({
     if (!next) {
       setValues(initial);
       setRoomTypeId("");
+      setPricing({ pricingMode: "standard" });
       setErrors({});
       setSubmitError("");
     }
@@ -112,7 +130,10 @@ export function CreateReservationModal({
 
     setSubmitError("");
     startTransition(async () => {
-      const result = await createReservationAction(values);
+      const result = await createReservationAction({
+        ...values,
+        pricing,
+      });
       if (!result.success) {
         setSubmitError(result.error);
         toast.error(result.error);
@@ -327,6 +348,20 @@ export function CreateReservationModal({
               </select>
             </div>
           </div>
+
+          {rackRate > 0 &&
+          values.checkInDate &&
+          values.checkOutDate &&
+          values.checkOutDate > values.checkInDate ? (
+            <ReservationPricingSection
+              rackRate={rackRate}
+              checkIn={values.checkInDate}
+              checkOut={values.checkOutDate}
+              pricingRules={selectedType?.pricingRules ?? []}
+              value={pricing}
+              onChange={setPricing}
+            />
+          ) : null}
 
           <DialogFooter>
             <Button

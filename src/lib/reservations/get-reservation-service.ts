@@ -3,6 +3,7 @@ import { createGuestFolioService, getGuestFolioServiceClient } from "@/lib/folio
 import { SupabaseActivityLogRepository } from "@/repositories/supabase/activity-log.repository";
 import { SupabaseGuestRepository } from "@/repositories/supabase/guest.repository";
 import { SupabaseNotificationRepository } from "@/repositories/supabase/notification.repository";
+import { SupabaseRoomTypePricingRuleRepository } from "@/repositories/supabase/room-type-pricing-rule.repository";
 import { SupabaseReservationRepository } from "@/repositories/supabase/reservation.repository";
 import { SupabaseRoomRepository } from "@/repositories/supabase/room.repository";
 import { ReservationService } from "@/services/reservation.service";
@@ -21,6 +22,7 @@ export async function getReservationService(): Promise<ReservationService> {
     new SupabaseActivityLogRepository(client),
     folios,
     new SupabaseNotificationRepository(client),
-    pricingSettings
+    pricingSettings,
+    new SupabaseRoomTypePricingRuleRepository(client)
   );
 }

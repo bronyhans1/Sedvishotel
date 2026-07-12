@@ -1,4 +1,5 @@
 import { getPaymentAccess } from "@/lib/auth/payment-access";
+import { getCheckOutAccess } from "@/lib/auth/check-out-access";
 import { mapDbPaymentToPayment } from "@/lib/payments/mapper";
 import {
   aggregatePaymentMethod,
@@ -103,14 +104,18 @@ export class PaymentService implements IPaymentService {
 
   private require(
     session: AuthSession,
-    action: "view" | "create" | "edit" | "refund"
+    action: "view" | "create" | "edit" | "refund",
+    options?: { authorizedByCheckout?: boolean }
   ): void {
     const access = getPaymentAccess(session);
+    const checkoutAccess = getCheckOutAccess(session);
     const allowed =
       (action === "view" && access.canView) ||
       (action === "create" && access.canRecord) ||
       (action === "edit" && access.canUpdate) ||
-      (action === "refund" && access.canRefund);
+      (action === "refund" &&
+        (access.canRefund ||
+          (options?.authorizedByCheckout && checkoutAccess.canProcess)));
 
     if (!allowed) {
       throw new ServiceError(
@@ -635,7 +640,9 @@ export class PaymentService implements IPaymentService {
     paymentId: string,
     values: RefundFormValues
   ): Promise<Payment> {
-    this.require(session, "refund");
+    this.require(session, "refund", {
+      authorizedByCheckout: values.authorizedByCheckout,
+    });
 
     if (!values.amount || roundCurrency(values.amount) <= 0) {
       throw new ServiceError(

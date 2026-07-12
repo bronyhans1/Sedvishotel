@@ -16,9 +16,13 @@ export type ReservationRoomOption = {
   label: string;
 };
 
+import type { RoomTypePricingRule } from "@/types/pricing";
+
 export type ReservationRoomTypeOption = {
   id: string;
   name: string;
+  defaultPrice: number;
+  pricingRules: RoomTypePricingRule[];
 };
 
 function deriveReservationRoomTypeOptions(
@@ -30,7 +34,12 @@ function deriveReservationRoomTypeOptions(
     byId.set(reservation.roomTypeId, reservation.roomTypeName);
   }
   return [...byId.entries()]
-    .map(([id, name]) => ({ id, name }))
+    .map(([id, name]) => ({
+      id,
+      name,
+      defaultPrice: 0,
+      pricingRules: [],
+    }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -57,7 +66,12 @@ export async function loadReservationsPageData() {
     const roomTypes = await roomTypeService.list(ctx, session);
     roomTypeOptions = roomTypes
       .filter((rt) => rt.status === "active")
-      .map((rt) => ({ id: rt.id, name: rt.name }))
+      .map((rt) => ({
+        id: rt.id,
+        name: rt.name,
+        defaultPrice: rt.defaultPrice,
+        pricingRules: rt.pricingRules,
+      }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 

@@ -27,6 +27,7 @@ import { ExtendStayModal } from "@/components/stays/ExtendStayModal";
 import { MoveRoomModal } from "@/components/stays/MoveRoomModal";
 
 import { EditReservationModal } from "@/components/reservations/EditReservationModal";
+import { PricingCard } from "@/components/pricing/PricingCard";
 import { BookingInformationCard } from "@/components/reservations/BookingInformationCard";
 import { ReservationStatusBadge } from "@/components/reservations/ReservationStatusBadge";
 import { ReservationTimeline } from "@/components/reservations/ReservationTimeline";
@@ -42,6 +43,7 @@ import { canEarlyCheckOut } from "@/lib/reservations/early-checkout";
 import { canLateCheckOut, isLateCheckoutReservation } from "@/lib/reservations/late-checkout";
 import { canMoveRoom } from "@/lib/reservations/room-move";
 import { buildReservationTimeline } from "@/lib/reservations/mapper";
+import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
 import { formatTaxSummaryLabel } from "@/lib/reservations/pricing";
 import { formatCurrency, nightsBetween } from "@/lib/utils";
 import { BOOKING_SOURCE_OPTIONS, type Reservation } from "@/types/reservation";
@@ -508,7 +510,7 @@ export function ReservationDetailsContent({
             <InfoRow
               icon={Calendar}
               label="Check-Out"
-              value={reservation.checkOutDate}
+              value={resolveEffectiveCheckOutDate(reservation)}
             />
             <InfoRow
               icon={Users}
@@ -530,13 +532,20 @@ export function ReservationDetailsContent({
               Payment Summary
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Room Rate</span>
-              <span className="font-medium">
-                {formatCurrency(reservation.roomRate)}/night
-              </span>
-            </div>
+          <CardContent className="space-y-4">
+            <PricingCard
+              rackRate={reservation.rackRate}
+              chargedRate={reservation.chargedRate}
+              discountAmount={reservation.discountAmount}
+              discountPercent={reservation.discountPercent}
+              pricingMode={reservation.pricingMode}
+              pricingSource={reservation.pricingSource}
+              overrideReason={reservation.overrideReason}
+              overrideReasonDetail={reservation.overrideReasonDetail}
+              approvedById={reservation.approvedById}
+              numberOfNights={reservation.numberOfNights}
+              priceLocked
+            />
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Number of Nights</span>
               <span className="font-medium">{reservation.numberOfNights}</span>

@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PricingCard } from "@/components/pricing/PricingCard";
 import type { Reservation } from "@/types/reservation";
 
 type Props = {
@@ -109,8 +110,22 @@ export function CheckInModal({
               </div>
             </div>
 
+            <PricingCard
+              rackRate={reservation.rackRate}
+              chargedRate={reservation.chargedRate}
+              discountAmount={reservation.discountAmount}
+              discountPercent={reservation.discountPercent}
+              pricingMode={reservation.pricingMode}
+              pricingSource={reservation.pricingSource}
+              overrideReason={reservation.overrideReason}
+              overrideReasonDetail={reservation.overrideReasonDetail}
+              approvedById={reservation.approvedById}
+              numberOfNights={reservation.numberOfNights}
+              priceLocked
+              compact
+            />
+
             <div className="space-y-3">
-              <p className="text-sm font-medium">Verification Checklist</p>
               {[
                 { id: "id", label: "ID Verified", checked: idVerified, set: setIdVerified },
                 {

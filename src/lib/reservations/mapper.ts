@@ -1,6 +1,9 @@
 import { resolveFloorLabel } from "@/lib/rooms/mapper";
+import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
 import { isLateCheckoutReservation } from "@/lib/reservations/late-checkout";
+import { parseRateOverrideHistory } from "@/lib/reservations/rate-management";
 import { formatCurrency } from "@/lib/utils";
+import type { OverrideReason, PricingMode, PricingSource } from "@/types/pricing";
 import type { DbReservationWithRelations } from "@/types/database";
 import type {
   Reservation,
@@ -78,7 +81,20 @@ export function mapDbReservationToReservation(
     children: row.children,
     status: row.status as Reservation["status"],
     bookingSource: row.booking_source,
+    rackRate: Number(row.rack_rate ?? row.room_rate),
     roomRate: Number(row.room_rate),
+    chargedRate: Number(row.room_rate),
+    discountAmount: Number(row.discount_amount ?? 0),
+    discountPercent: Number(row.discount_percent ?? 0),
+    pricingMode: (row.pricing_mode ?? "standard") as PricingMode,
+    pricingSource: (row.pricing_source ?? "room_type_default") as PricingSource,
+    pricingRuleId: row.pricing_rule_id,
+    overrideReason: (row.override_reason as OverrideReason | null) ?? null,
+    overrideReasonDetail: row.override_reason_detail,
+    overriddenById: row.overridden_by,
+    approvedById: row.approved_by,
+    overrideAt: row.override_at,
+    rateOverrideHistory: parseRateOverrideHistory(row.rate_override_history),
     numberOfNights: row.number_of_nights,
     subtotal: Number(row.subtotal),
     taxes: Number(row.taxes),
@@ -138,6 +154,8 @@ export function computeReservationStats(
 export function buildReservationTimeline(
   reservation: Reservation
 ): ReservationTimelineEvent[] {
+  const effectiveCheckOutDate = resolveEffectiveCheckOutDate(reservation);
+
   return [
     {
       id: "1",
@@ -194,10 +212,11 @@ export function buildReservationTimeline(
             ? reservation.lateCheckOutComplimentary
               ? "Late checkout · Complimentary"
               : `Late checkout · ${formatCurrency(reservation.lateCheckOutFee ?? 0)}`
-            : `Scheduled ${reservation.checkOutDate}`,
+            : `Scheduled ${effectiveCheckOutDate}`,
       timestamp:
-        reservation.status === "checked_out_early" && reservation.actualCheckOutDate
-          ? reservation.actualCheckOutDate
+        reservation.status === "checked_out_early" ||
+        reservation.status === "checked_out"
+          ? effectiveCheckOutDate
           : reservation.lateCheckOutAt ?? reservation.checkOutDate,
       completed:
         reservation.status === "checked_out" ||

@@ -5,6 +5,8 @@ import type {
   VatExemptionReason,
 } from "@/types/payment";
 
+import type { ReservationPricingInput } from "@/types/pricing";
+
 export type WalkInFormValues = {
   fullName: string;
   phone: string;
@@ -23,7 +25,7 @@ export type WalkInFormValues = {
   vatApplied?: boolean;
   vatExemptionReason?: VatExemptionReason | "";
   vatExemptionNotes?: string;
-};
+} & ReservationPricingInput;
 
 export type WalkInRoomOption = {
   id: string;

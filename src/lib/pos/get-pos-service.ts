@@ -6,6 +6,8 @@ import { SupabaseActivityLogRepository } from "@/repositories/supabase/activity-
 import { SupabasePosRepository } from "@/repositories/supabase/pos.repository";
 import { SupabaseProductRepository } from "@/repositories/supabase/product.repository";
 import { SupabaseReservationRepository } from "@/repositories/supabase/reservation.repository";
+import { SupabaseGroupReservationRepository } from "@/repositories/supabase/group-reservation.repository";
+import { SupabaseGuestFolioRepository } from "@/repositories/supabase/guest-folio.repository";
 import { PosService } from "@/services/pos.service";
 
 export async function getPosService(): Promise<PosService> {
@@ -20,6 +22,8 @@ export async function getPosService(): Promise<PosService> {
     new SupabaseProductRepository(client),
     new SupabaseReservationRepository(client),
     new SupabaseActivityLogRepository(client),
-    folios
+    folios,
+    new SupabaseGroupReservationRepository(client),
+    new SupabaseGuestFolioRepository(client)
   );
 }
