@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { PosCartPanel } from "@/features/pos/components/PosCartPanel";
 import { PosGuestPicker } from "@/features/pos/components/PosGuestPicker";
 import { PosProductGrid } from "@/features/pos/components/PosProductGrid";
+import { PosReceiptDialog } from "@/features/pos/components/PosReceiptDialog";
 import { PosSidebar } from "@/features/pos/components/PosSidebar";
 import {
   completePosSaleAction,
@@ -25,8 +26,12 @@ import {
 } from "@/lib/pos/filter-catalog";
 import { hotelContact } from "@/config/hotel-contact";
 import {
-  openPosReceiptPrintWindow,
-  renderPosReceiptInWindow,
+  buildPosSaleCompletionToast,
+  delay,
+  POS_SALE_TOAST_DURATION_MS,
+} from "@/lib/pos/sale-completion-toast";
+import {
+  printPosReceipt,
   type PosReceiptBranding,
 } from "@/lib/pos/pos-receipt";
 import { buildPosCartSettlement, isProductSellable } from "@/lib/pos/settlement";
@@ -79,6 +84,7 @@ export function PosPageContent({
   });
   const [error, setError] = useState("");
   const [isPending, startSubmit] = useTransition();
+  const [completedSale, setCompletedSale] = useState<PosSale | null>(null);
   const idempotencyKeyRef = useRef("");
 
   const catalog = useMemo(
@@ -174,23 +180,39 @@ export function PosPageContent({
     };
   }
 
-  async function handleCompletedSale(
-    sale: PosSale,
-    printWindow: Window | null
-  ) {
-    renderPosReceiptInWindow(printWindow, sale, buildReceiptBranding());
-    await logPosReceiptPrintedAction(sale.id);
+  async function handleReceiptPrint() {
+    if (!completedSale) return;
 
-    if (sale.payments[0]?.paymentMethod === "cash") {
+    printPosReceipt(completedSale, buildReceiptBranding());
+    await logPosReceiptPrintedAction(completedSale.id);
+
+    if (completedSale.payments[0]?.paymentMethod === "cash") {
       await triggerCashDrawerAfterSale({
-        saleId: sale.id,
-        receiptNumber: sale.payments[0]?.receiptNumber,
-        amount: sale.total,
+        saleId: completedSale.id,
+        receiptNumber: completedSale.payments[0]?.receiptNumber,
+        amount: completedSale.total,
         timestamp: new Date().toISOString(),
       });
     }
 
+    setCompletedSale(null);
     resetPosAfterSale();
+  }
+
+  function handleReceiptSkip() {
+    setCompletedSale(null);
+    resetPosAfterSale();
+  }
+
+  async function presentSaleCompletion(sale: PosSale) {
+    const toastContent = buildPosSaleCompletionToast(sale);
+    toast.successDetail(
+      toastContent.headline,
+      toastContent.details,
+      POS_SALE_TOAST_DURATION_MS
+    );
+    await delay(POS_SALE_TOAST_DURATION_MS);
+    setCompletedSale(sale);
   }
 
   function handleCompleteSale() {
@@ -206,9 +228,6 @@ export function PosPageContent({
     }
 
     startSubmit(async () => {
-      const printWindow =
-        customerType === "walk_in" ? openPosReceiptPrintWindow() : null;
-
       if (!idempotencyKeyRef.current) {
         idempotencyKeyRef.current = createPosIdempotencyKey();
       }
@@ -236,7 +255,6 @@ export function PosPageContent({
       );
 
       if (!result.success) {
-        printWindow?.close();
         setError(result.error);
         toast.error(result.error);
         return;
@@ -245,7 +263,6 @@ export function PosPageContent({
       idempotencyKeyRef.current = createPosIdempotencyKey();
 
       if (result.idempotentReplay) {
-        printWindow?.close();
         toast.success(
           "This sale was already completed. No additional receipt was printed."
         );
@@ -253,17 +270,7 @@ export function PosPageContent({
         return;
       }
 
-      toast.celebrate(
-        customerType === "room_charge" ? "Room Charge Recorded" : "Sale Complete",
-        `${result.sale.saleNumber} recorded successfully.`
-      );
-
-      if (customerType === "walk_in") {
-        await handleCompletedSale(result.sale, printWindow);
-      } else {
-        printWindow?.close();
-        resetPosAfterSale();
-      }
+      await presentSaleCompletion(result.sale);
     });
   }
 
@@ -422,6 +429,13 @@ export function PosPageContent({
         onOpenChange={setGuestPickerOpen}
         stays={activeStays}
         onSelect={setSelectedStay}
+      />
+
+      <PosReceiptDialog
+        open={completedSale !== null}
+        sale={completedSale}
+        onPrint={handleReceiptPrint}
+        onSkip={handleReceiptSkip}
       />
     </div>
   );

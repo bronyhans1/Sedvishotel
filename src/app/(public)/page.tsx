@@ -12,15 +12,21 @@ import { StickyBookingBar } from "@/components/public/StickyBookingBar";
 import { TrustSection } from "@/components/public/TrustSection";
 import { WhyChooseUs } from "@/components/public/WhyChooseUs";
 import { Button } from "@/components/ui/button";
-import { publicMetadata } from "@/config/public-site";
 import { getFeaturedPublicRooms, loadPublicRooms } from "@/lib/public/load-public-rooms";
 import { buildPublicMetadata } from "@/lib/public-seo";
 
 export const metadata: Metadata = buildPublicMetadata({
-  title: publicMetadata.defaultTitle,
+  title: "SEDVIS HOTEL | Luxury Hotel in Ho, Volta Region",
   description:
-    "SEDVIS HOTEL — luxury accommodations in Ho, Volta Region, Ghana. Book your stay for comfort, elegance, and exceptional hospitality.",
+    "SEDVIS HOTEL offers refined accommodation in Ho, Ghana — a luxury hotel in the Volta Region with elegant rooms, 24/7 reception, and exceptional hospitality. Book your stay today.",
   path: "/",
+  keywords: [
+    "SEDVIS HOTEL",
+    "hotel in Ho",
+    "hotel in Volta Region",
+    "accommodation in Ho Ghana",
+    "luxury hotel in Ho",
+  ],
 });
 
 export default async function HomePage() {

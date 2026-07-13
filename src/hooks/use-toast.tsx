@@ -18,6 +18,8 @@ type ToastItem = {
   id: string;
   message: string;
   variant: ToastVariant;
+  details?: string[];
+  durationMs?: number;
 };
 
 type CelebrationState = {
@@ -28,6 +30,12 @@ type CelebrationState = {
 type ToastContextValue = {
   /** Immediate success toast (no animation). */
   success: (message: string) => void;
+  /** Structured success toast with optional detail lines and custom duration. */
+  successDetail: (
+    headline: string,
+    details?: string[],
+    durationMs?: number
+  ) => void;
   error: (message: string) => void;
   /**
    * Premium flow: success animation → toast.
@@ -50,14 +58,30 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const push = useCallback(
-    (message: string, variant: ToastVariant) => {
+    (
+      message: string,
+      variant: ToastVariant,
+      options?: { details?: string[]; durationMs?: number }
+    ) => {
       const id =
         typeof crypto !== "undefined" && crypto.randomUUID
           ? crypto.randomUUID()
           : String(Date.now());
 
-      setToasts((prev) => [...prev, { id, message, variant }]);
-      window.setTimeout(() => dismiss(id), 4500);
+      setToasts((prev) => [
+        ...prev,
+        {
+          id,
+          message,
+          variant,
+          details: options?.details,
+          durationMs: options?.durationMs,
+        },
+      ]);
+      window.setTimeout(
+        () => dismiss(id),
+        options?.durationMs ?? 4500
+      );
     },
     [dismiss]
   );
@@ -71,6 +95,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<ToastContextValue>(
     () => ({
       success: (message: string) => push(message, "success"),
+      successDetail: (
+        headline: string,
+        details?: string[],
+        durationMs?: number
+      ) => push(headline, "success", { details, durationMs }),
       error: (message: string) => push(message, "error"),
       celebrate: (headline: string, toastMessage?: string) => {
         setCelebration({
@@ -113,7 +142,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             ) : (
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             )}
-            <p className="flex-1 leading-snug">{toast.message}</p>
+            <p className="flex-1 leading-snug">
+              <span className="font-medium">{toast.message}</span>
+              {toast.details?.length ? (
+                <span className="mt-1 block space-y-0.5 text-xs text-muted-foreground">
+                  {toast.details.map((line) => (
+                    <span key={line} className="block">
+                      {line}
+                    </span>
+                  ))}
+                </span>
+              ) : null}
+            </p>
             <button
               type="button"
               className="shrink-0 rounded-sm opacity-70 hover:opacity-100"

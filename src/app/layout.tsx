@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import { AppProviders } from "@/components/providers/app-providers";
+import { getPublicSiteUrl } from "@/config/public-site-url";
 import { siteConfig } from "@/config/site";
 
 import "./globals.css";
@@ -17,6 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getPublicSiteUrl()),
   title: {
     default: siteConfig.fullName,
     template: `%s | ${siteConfig.shortName}`,

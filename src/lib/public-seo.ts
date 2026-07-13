@@ -2,15 +2,12 @@ import type { Metadata, MetadataRoute } from "next";
 
 import { hotelContact } from "@/config/hotel-contact";
 import { hotelInformation } from "@/config/hotel-information";
+import { getPublicSiteUrl } from "@/config/public-site-url";
 import { publicNavLinks, publicSiteConfig } from "@/config/public-site";
 import { publicImages } from "@/lib/public/images";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.sedvishotel.com";
-
-/** Canonical public site origin — shared by metadata, manifest, robots, and sitemap. */
-export function getPublicSiteUrl(): string {
-  return siteUrl.replace(/\/$/, "");
-}
+/** Canonical public site origin — re-exported for consumers that already import from here. */
+export { getPublicSiteUrl } from "@/config/public-site-url";
 
 export function getSocialShareImageUrl(): string {
   return `${getPublicSiteUrl()}${publicImages.socialShare}`;
@@ -27,19 +24,23 @@ type PublicSeoOptions = {
   title: string;
   description: string;
   path?: string;
+  keywords?: string[];
 };
 
 export function buildPublicMetadata({
   title,
   description,
   path = "",
+  keywords,
 }: PublicSeoOptions): Metadata {
   const url = `${getPublicSiteUrl()}${path}`;
   const imageUrl = getSocialShareImageUrl();
 
   return {
-    title,
+    title: { absolute: title },
     description,
+    ...(keywords?.length ? { keywords } : {}),
+    metadataBase: new URL(getPublicSiteUrl()),
     openGraph: {
       type: "website",
       locale: "en_GH",
@@ -84,6 +85,7 @@ export function hotelJsonLd() {
       addressLocality: hotelContact.city,
       addressRegion: hotelContact.region,
       addressCountry: hotelContact.country,
+      name: hotelContact.name,
     },
     priceRange: "GH₵₵₵",
     amenityFeature: [
@@ -113,8 +115,27 @@ export function organizationJsonLd() {
       addressLocality: hotelContact.city,
       addressRegion: hotelContact.region,
       addressCountry: hotelContact.country,
+      name: hotelContact.name,
     },
     sameAs: publicSiteConfig.social.map((link) => link.href),
+  };
+}
+
+export function websiteJsonLd() {
+  const canonicalUrl = getPublicSiteUrl();
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: hotelInformation.name,
+    url: canonicalUrl,
+    description: hotelInformation.description,
+    publisher: {
+      "@type": "Organization",
+      name: hotelInformation.name,
+      url: canonicalUrl,
+    },
+    inLanguage: "en-GH",
   };
 }
 

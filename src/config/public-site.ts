@@ -51,8 +51,8 @@ export const publicNavLinks = [
 ] as const;
 
 export const publicMetadata = {
-  defaultTitle: "SEDVIS HOTEL | Luxury Hotel Experience",
-  rooms: "SEDVIS HOTEL Rooms",
+  defaultTitle: "SEDVIS HOTEL | Luxury Hotel in Ho, Volta Region",
+  rooms: "Rooms & Accommodation | SEDVIS HOTEL Ho",
   gallery: "SEDVIS HOTEL Gallery",
   about: "SEDVIS HOTEL About",
   contact: "SEDVIS HOTEL Contact",
