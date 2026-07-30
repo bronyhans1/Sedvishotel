@@ -11,6 +11,7 @@ import {
 } from "@/lib/payments/atomic-commit";
 import { computeTransactionTotals, resolvePaymentStatusFromTotals } from "@/lib/payments/totals";
 import { sessionHasPermission } from "@/lib/auth/permissions";
+import { permissionCode } from "@/lib/database/rbac";
 import { mapDbReservationToReservation } from "@/lib/reservations/mapper";
 import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
 import {
@@ -62,6 +63,7 @@ import { ServiceError } from "@/services/types";
 import type { ServiceContext } from "@/services/types";
 import { ActivityActionCodes } from "@/types/database/enums";
 import type {
+  DbPermissionModule,
   DbReservation,
   DbReservationStatus,
   DbReservationWithRelations,
@@ -357,6 +359,37 @@ export class ReservationService implements IReservationService {
         403
       );
     }
+  }
+
+  /**
+   * Phase 1 RBAC: operational READ allowlist.
+   * Accepts reservations.view OR any alternate front-desk module.view.
+   * Does not grant create/edit/delete/manage on reservations.
+   */
+  private requireOperationalView(
+    session: AuthSession,
+    alternateModules: readonly DbPermissionModule[]
+  ): void {
+    if (sessionHasPermission(session, "reservations", "view")) {
+      return;
+    }
+
+    for (const alternate of alternateModules) {
+      if (sessionHasPermission(session, alternate, "view")) {
+        return;
+      }
+    }
+
+    const allowed = [
+      permissionCode("reservations", "view"),
+      ...alternateModules.map((alternate) => permissionCode(alternate, "view")),
+    ].join(" or ");
+
+    throw new ServiceError(
+      `Forbidden: missing permission ${allowed}`,
+      "FORBIDDEN",
+      403
+    );
   }
 
   private requireStayOperations(session: AuthSession): void {
@@ -1020,7 +1053,7 @@ export class ReservationService implements IReservationService {
     session: AuthSession,
     guestId: string
   ): Promise<Reservation[]> {
-    this.require(session, "view");
+    this.requireOperationalView(session, ["guests"]);
     const rows = await this.reservations.getByGuestId(guestId);
     return rows.map(mapDbReservationToReservation);
   }
@@ -1029,7 +1062,7 @@ export class ReservationService implements IReservationService {
     _ctx: ServiceContext,
     session: AuthSession
   ): Promise<{ checkInsToday: number; checkOutsToday: number }> {
-    this.require(session, "view");
+    this.requireOperationalView(session, ["guests"]);
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     const end = new Date();
@@ -1455,7 +1488,7 @@ export class ReservationService implements IReservationService {
     session: AuthSession,
     asOfDate: string = getTodayDateString()
   ): Promise<Reservation[]> {
-    this.require(session, "view");
+    this.requireOperationalView(session, ["check_in"]);
     const rows = await this.reservations.findPendingCheckIns(asOfDate);
     return rows.map(mapDbReservationToReservation);
   }
@@ -1464,7 +1497,7 @@ export class ReservationService implements IReservationService {
     _ctx: ServiceContext,
     session: AuthSession
   ): Promise<Reservation[]> {
-    this.require(session, "view");
+    this.requireOperationalView(session, ["check_out"]);
     const rows = await this.reservations.findCheckedIn();
     return rows.map(mapDbReservationToReservation);
   }
@@ -1474,7 +1507,7 @@ export class ReservationService implements IReservationService {
     session: AuthSession,
     asOfDate: string = getTodayDateString()
   ): Promise<CheckInPageStats> {
-    this.require(session, "view");
+    this.requireOperationalView(session, ["check_in"]);
     const all = await this.reservations.getAll();
     const reservations = all.map(mapDbReservationToReservation);
     const pending = await this.listPendingCheckIns(ctx, session, asOfDate);
@@ -1505,7 +1538,7 @@ export class ReservationService implements IReservationService {
     asOfDate: string = getTodayDateString()
   ): Promise<CheckOutPageStats> {
     void _ctx;
-    this.require(session, "view");
+    this.requireOperationalView(session, ["check_out"]);
     const all = await this.reservations.getAll();
     const reservations = all.map(mapDbReservationToReservation);
     const checkedIn = reservations.filter((r) => r.status === "checked_in");
@@ -1581,19 +1614,25 @@ export class ReservationService implements IReservationService {
     _ctx: ServiceContext,
     session: AuthSession
   ): Promise<ActiveStay[]> {
-    this.require(session, "view");
+    this.requireOperationalView(session, ["active_stays"]);
     const rows = await this.reservations.findCheckedIn();
     return buildActiveStaysFromReservations(rows);
   }
 
   async getStayPageStats(
-    ctx: ServiceContext,
+    _ctx: ServiceContext,
     session: AuthSession,
     asOfDate: string = getTodayDateString()
   ): Promise<StayStats> {
-    this.require(session, "view");
-    const stays = await this.listActiveStays(ctx, session);
-    const reservations = await this.listReservations(ctx, session);
+    void _ctx;
+    this.requireOperationalView(session, ["active_stays"]);
+    // Use repository reads directly so active_stays.view does not need
+    // listReservations() → reservations.view (management browse).
+    const checkedInRows = await this.reservations.findCheckedIn();
+    const stays = buildActiveStaysFromReservations(checkedInRows);
+    const reservations = (await this.reservations.getAll()).map(
+      mapDbReservationToReservation
+    );
     return computeStayStats(stays, reservations, asOfDate);
   }
 
