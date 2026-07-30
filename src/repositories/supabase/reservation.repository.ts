@@ -4,6 +4,8 @@ import { throwIfReservationOverlapError } from "@/lib/reservations/room-conflict
 import { ROOM_ARCHIVED_MARKER } from "@/lib/rooms/constants";
 import type {
   AvailabilityQuery,
+  ExtendStayAvailabilityQuery,
+  ExtendStayAvailabilityResult,
   IReservationRepository,
 } from "@/repositories/reservation.repository";
 import type { SupabaseServerClient } from "@/lib/supabase/server";
@@ -257,6 +259,79 @@ export class SupabaseReservationRepository implements IReservationRepository {
     return rooms
       .filter((room) => !bookedRoomIds.has(room.id) && !blockedRoomIds.has(room.id))
       .map((room) => room.id);
+  }
+
+  /**
+   * Same-room extension overlap check.
+   * Intentionally ignores rooms.status — the guest already occupies the room.
+   */
+  async checkExtendStayAvailability(
+    query: ExtendStayAvailabilityQuery
+  ): Promise<ExtendStayAvailabilityResult> {
+    const { roomId, checkIn, checkOut, excludeReservationId } = query;
+    if (!checkIn || !checkOut || checkOut <= checkIn) {
+      return { available: false, reason: "invalid_dates" };
+    }
+
+    const { data: bookedData, error: bookedError } = await this.client
+      .from("reservations")
+      .select("id")
+      .eq("room_id", roomId)
+      .in("status", BLOCKING_RESERVATION_STATUSES)
+      .lt("check_in_date", checkOut)
+      .gt("check_out_date", checkIn)
+      .neq("id", excludeReservationId);
+
+    if (bookedError) {
+      throw new Error(
+        `Failed to check extend-stay availability: ${bookedError.message}`
+      );
+    }
+
+    if ((bookedData ?? []).length > 0) {
+      return { available: false, reason: "reservation" };
+    }
+
+    const { data: blockedData, error: blockedError } = await this.client
+      .from("reservation_blocks")
+      .select("room_id, group_reservation_id, hold_until")
+      .eq("status", "blocked")
+      .eq("room_id", roomId)
+      .gt("hold_until", new Date().toISOString());
+
+    if (blockedError) {
+      throw new Error(
+        `Failed to check extend-stay reservation blocks: ${blockedError.message}`
+      );
+    }
+
+    if ((blockedData ?? []).length > 0) {
+      const groupIds = [
+        ...new Set(
+          (blockedData ?? []).map((row) => String(row.group_reservation_id))
+        ),
+      ];
+      const { data: groups, error: groupError } = await this.client
+        .from("group_reservations")
+        .select("id, arrival_date, departure_date")
+        .in("id", groupIds);
+
+      if (groupError) {
+        throw new Error(
+          `Failed to load groups for extend-stay blocks: ${groupError.message}`
+        );
+      }
+
+      const hasOverlappingBlock = (groups ?? []).some(
+        (g) => g.arrival_date < checkOut && g.departure_date > checkIn
+      );
+
+      if (hasOverlappingBlock) {
+        return { available: false, reason: "block" };
+      }
+    }
+
+    return { available: true };
   }
 
   async getNextReservationNumber(): Promise<string> {

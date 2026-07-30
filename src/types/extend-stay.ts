@@ -31,4 +31,8 @@ export type ExtendStayPreview = {
   extraAmount: number;
   amountPaid: number;
   paymentRequired: number;
+  /** False when another reservation or block overlaps the extension window. */
+  extensionAvailable: boolean;
+  /** Guest-facing conflict message when extensionAvailable is false. */
+  availabilityMessage: string | null;
 };

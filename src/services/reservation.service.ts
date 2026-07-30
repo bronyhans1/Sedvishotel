@@ -50,6 +50,7 @@ import type { IGuestRepository } from "@/repositories/guest.repository";
 import type { INotificationRepository } from "@/repositories/notification.repository";
 import type {
   AvailabilityQuery,
+  ExtendStayAvailabilityResult,
   IReservationRepository,
 } from "@/repositories/reservation.repository";
 import type { IRoomRepository } from "@/repositories/room.repository";
@@ -763,6 +764,65 @@ export class ReservationService implements IReservationService {
         409
       );
     }
+  }
+
+  private extendStayConflictMessage(
+    result: Extract<ExtendStayAvailabilityResult, { available: false }>
+  ): string {
+    switch (result.reason) {
+      case "block":
+        return "This room is already reserved for another guest during the requested extension.";
+      case "invalid_dates":
+        return "The requested extension dates are invalid.";
+      case "reservation":
+      default:
+        return "This room cannot be extended because another reservation begins during the selected extension.";
+    }
+  }
+
+  /**
+   * Same-room extension validation — does not require rooms.status === available.
+   */
+  private async assertExtendStayAvailable(
+    roomId: string,
+    extensionFrom: string,
+    extensionTo: string,
+    excludeReservationId: string
+  ): Promise<void> {
+    const result = await this.reservations.checkExtendStayAvailability({
+      roomId,
+      checkIn: extensionFrom,
+      checkOut: extensionTo,
+      excludeReservationId,
+    });
+    if (!result.available) {
+      throw new ServiceError(
+        this.extendStayConflictMessage(result),
+        "CONFLICT",
+        409
+      );
+    }
+  }
+
+  private async resolveExtendStayAvailability(
+    roomId: string,
+    extensionFrom: string,
+    extensionTo: string,
+    excludeReservationId: string
+  ): Promise<{ extensionAvailable: boolean; availabilityMessage: string | null }> {
+    const result = await this.reservations.checkExtendStayAvailability({
+      roomId,
+      checkIn: extensionFrom,
+      checkOut: extensionTo,
+      excludeReservationId,
+    });
+    if (result.available) {
+      return { extensionAvailable: true, availabilityMessage: null };
+    }
+    return {
+      extensionAvailable: false,
+      availabilityMessage: this.extendStayConflictMessage(result),
+    };
   }
 
   private async resolveOrCreateGuest(
@@ -2384,6 +2444,13 @@ export class ReservationService implements IReservationService {
       serviceChargeRate: rates.serviceChargeRate,
     });
 
+    const availability = await this.resolveExtendStayAvailability(
+      row.room_id,
+      row.check_out_date,
+      newCheckOutDate,
+      row.id
+    );
+
     return {
       reservationId: row.id,
       reservationNumber: row.reservation_number,
@@ -2399,6 +2466,8 @@ export class ReservationService implements IReservationService {
       extraAmount: computation.extraAmount,
       amountPaid: Number(row.amount_paid),
       paymentRequired: computation.paymentRequired,
+      extensionAvailable: availability.extensionAvailable,
+      availabilityMessage: availability.availabilityMessage,
     };
   }
 
@@ -2423,7 +2492,7 @@ export class ReservationService implements IReservationService {
       );
     }
 
-    await this.assertRoomAvailable(
+    await this.assertExtendStayAvailable(
       row.room_id,
       row.check_out_date,
       newCheckOutDate,

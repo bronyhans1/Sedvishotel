@@ -12,6 +12,21 @@ export interface AvailabilityQuery {
   excludeReservationId?: string;
 }
 
+/**
+ * Same-room stay extension window — half-open [checkIn, checkOut).
+ * Ignores rooms.status; only checks reservation / block overlap on one room.
+ */
+export interface ExtendStayAvailabilityQuery {
+  roomId: string;
+  checkIn: string;
+  checkOut: string;
+  excludeReservationId: string;
+}
+
+export type ExtendStayAvailabilityResult =
+  | { available: true }
+  | { available: false; reason: "reservation" | "block" | "invalid_dates" };
+
 export interface IReservationRepository {
   getAll(): Promise<DbReservationWithRelations[]>;
   getById(id: string): Promise<DbReservationWithRelations | null>;
@@ -23,6 +38,13 @@ export interface IReservationRepository {
   findPendingCheckIns(asOfDate: string): Promise<DbReservationWithRelations[]>;
   findCheckedIn(): Promise<DbReservationWithRelations[]>;
   checkAvailability(query: AvailabilityQuery): Promise<string[]>;
+  /**
+   * Can the guest remain in this specific room for the extension window?
+   * Does not consult rooms.status (occupied rooms remain valid).
+   */
+  checkExtendStayAvailability(
+    query: ExtendStayAvailabilityQuery
+  ): Promise<ExtendStayAvailabilityResult>;
   getNextReservationNumber(): Promise<string>;
   create(
     data: Omit<DbReservation, "id" | "created_at" | "updated_at" | "reservation_number">

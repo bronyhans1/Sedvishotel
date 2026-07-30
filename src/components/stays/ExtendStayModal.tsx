@@ -192,7 +192,13 @@ export function ExtendStayModal({
               </div>
             ) : null}
 
-            {preview.extraAmount > 0 ? (
+            {preview.availabilityMessage ? (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                {preview.availabilityMessage}
+              </p>
+            ) : null}
+
+            {preview.extraAmount > 0 && preview.extensionAvailable ? (
               <div className="space-y-2">
                 <Label>Payment Method</Label>
                 <select
@@ -234,6 +240,7 @@ export function ExtendStayModal({
             disabled={
               isPending ||
               !preview ||
+              !preview.extensionAvailable ||
               !newCheckOutDate ||
               newCheckOutDate <= (preview?.currentCheckOutDate ?? "") ||
               loadingPreview
