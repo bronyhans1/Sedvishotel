@@ -5,9 +5,11 @@ import { ACCESS_DENIED_PATH } from "@/lib/auth/route-guard";
 import { getReservationAccess } from "@/lib/auth/reservation-access";
 import { sessionHasPermission } from "@/lib/auth/permissions";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import { computeReservationStats } from "@/lib/reservations/mapper";
 import { getReservationService } from "@/lib/reservations/get-reservation-service";
 import { getRoomTypeService } from "@/lib/room-types/get-room-type-service";
+import { loadCheckoutPolicy } from "@/lib/settings/checkout-policy";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { Reservation } from "@/types/reservation";
 
@@ -56,7 +58,11 @@ export async function loadReservationsPageData() {
   }
 
   const reservationService = await getReservationService();
-  const reservations = await reservationService.listReservations(ctx, session);
+  const [reservations, businessDate, checkoutPolicy] = await Promise.all([
+    reservationService.listReservations(ctx, session),
+    getCurrentBusinessDate(),
+    loadCheckoutPolicy(),
+  ]);
 
   const stats = computeReservationStats(reservations);
 
@@ -75,5 +81,12 @@ export async function loadReservationsPageData() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  return { reservations, stats, access, roomTypeOptions };
+  return {
+    reservations,
+    stats,
+    access,
+    roomTypeOptions,
+    businessDate,
+    checkoutPolicy,
+  };
 }

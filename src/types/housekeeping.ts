@@ -16,6 +16,13 @@ export type HousekeepingTask = {
   lastGuest: string;
   lastCheckoutTime: string;
   expectedCompletion: string;
+  /** Operational departure label for occupied / awaiting-checkout context. */
+  departureLabel?: string | null;
+  departureClassification?:
+    | "expected_departure"
+    | "late_checkout"
+    | "overstay"
+    | null;
 };
 
 export type HousekeepingStats = {

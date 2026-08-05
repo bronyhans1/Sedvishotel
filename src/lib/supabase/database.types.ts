@@ -5,6 +5,11 @@ import type {
   DbHousekeepingTask,
   DbInvoice,
   DbNightAudit,
+  DbNightAuditRevision,
+  DbHotelOperatingDay,
+  DbOverstayCharge,
+  DbCorrectionSession,
+  DbBusinessDayLockAudit,
   DbNotification,
   DbShiftHandover,
   DbShiftHandoverIssue,
@@ -168,6 +173,11 @@ export type Database = {
       notifications: TableRow<DbNotification>;
       activity_logs: TableRow<DbActivityLog>;
       night_audits: TableRow<DbNightAudit>;
+      night_audit_revisions: TableRow<DbNightAuditRevision>;
+      hotel_operating_day: TableRow<DbHotelOperatingDay>;
+      overstay_charges: TableRow<DbOverstayCharge>;
+      correction_sessions: TableRow<DbCorrectionSession>;
+      business_day_lock_audits: TableRow<DbBusinessDayLockAudit>;
       shift_handovers: TableRow<DbShiftHandover>;
       shift_handover_tasks: TableRow<DbShiftHandoverTask>;
       shift_handover_issues: TableRow<DbShiftHandoverIssue>;

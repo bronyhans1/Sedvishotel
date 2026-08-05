@@ -50,9 +50,15 @@ export function computeRevenueData(input: {
   reservations: Reservation[];
   rooms: Room[];
   asOf?: Date;
+  /** Prefer YYYY-MM-DD business date over Date to avoid timezone drift. */
+  asOfDate?: string;
 }): RevenueData {
-  const now = input.asOf ?? new Date();
-  const today = now.toISOString().slice(0, 10);
+  const now =
+    input.asOf ??
+    (input.asOfDate ? new Date(`${input.asOfDate}T12:00:00`) : new Date());
+  const today =
+    input.asOfDate ??
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const weekStart = startOfWeek(now);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const yearStart = new Date(now.getFullYear(), 0, 1);

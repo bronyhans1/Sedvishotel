@@ -276,6 +276,16 @@ export class PaymentService implements IPaymentService {
   ): Promise<Payment> {
     this.require(session, "create");
 
+    const { assertBusinessDayWritable } = await import(
+      "@/lib/operational-integrity/assert-business-day-writable"
+    );
+    await assertBusinessDayWritable(ctx, session, {
+      operation: "manual_payment",
+      module: "payments",
+      entityType: "reservation",
+      entityId: values.reservationId,
+    });
+
     if (!values.reservationId) {
       throw new ServiceError("Reservation is required.", "VALIDATION", 400);
     }

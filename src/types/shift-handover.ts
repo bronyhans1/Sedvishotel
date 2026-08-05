@@ -19,6 +19,8 @@ export type ShiftHandover = {
   openedAt: string;
   closedAt: string | null;
   acknowledgedAt: string | null;
+  /** Operational Business Date when the shift was opened. */
+  businessDate: string | null;
   cashDrawerAmount: number;
   closingCash: number | null;
   cashVariance: number | null;

@@ -104,6 +104,8 @@ export type GroupDetailData = {
   access: ReturnType<typeof getGroupReservationAccess>;
   intelligence: GroupOperationalIntelligence;
   corporateAccount: CorporateAccount | null;
+  businessDate: string;
+  checkoutPolicy: import("@/types/late-checkout").CheckoutPolicy;
 };
 
 export async function loadGroupDetailPageData(groupId: string): Promise<GroupDetailData> {
@@ -128,9 +130,11 @@ export async function loadGroupDetailPageData(groupId: string): Promise<GroupDet
     redirect("/dashboard/group-reservations");
   }
 
-  const [financial, timeline] = await Promise.all([
+  const [financial, timeline, businessDate, checkoutPolicy] = await Promise.all([
     groupService.getFinancialSummary(ctx, session, groupId),
     groupService.getTimeline(ctx, session, groupId),
+    (await import("@/lib/dates/business-date")).getCurrentBusinessDate(),
+    (await import("@/lib/settings/checkout-policy")).loadCheckoutPolicy(),
   ]);
 
   const { getCorporateAccountServiceClient } = await import(
@@ -171,7 +175,8 @@ export async function loadGroupDetailPageData(groupId: string): Promise<GroupDet
     groupId,
     summary,
     financial,
-    timeline
+    timeline,
+    businessDate
   );
 
   const blockRows = await new SupabaseReservationBlockRepository(client).listByGroup(groupId);
@@ -231,5 +236,7 @@ export async function loadGroupDetailPageData(groupId: string): Promise<GroupDet
     access,
     intelligence,
     corporateAccount,
+    businessDate,
+    checkoutPolicy,
   };
 }

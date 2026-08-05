@@ -4,6 +4,7 @@ import { ACCESS_DENIED_PATH } from "@/lib/auth/route-guard";
 
 import { getAnalyticsAccess } from "@/lib/auth/analytics-access";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import { getAnalyticsService } from "@/lib/analytics/get-analytics-service";
 import { loadGroupReportsContract } from "@/lib/analytics/group-contracts";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -21,10 +22,11 @@ export async function loadReportsPageData() {
   }
 
   const service = await getAnalyticsService();
-  const [data, groupReports] = await Promise.all([
+  const [data, groupReports, businessDate] = await Promise.all([
     service.getReportsData(ctx, session),
     loadGroupReportsContract(ctx, session),
+    getCurrentBusinessDate(),
   ]);
 
-  return { data, access, groupReports };
+  return { data, access, groupReports, businessDate };
 }

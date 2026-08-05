@@ -7,8 +7,9 @@ export function getCheckOutAccess(session: AuthSession): CheckOutAccess {
   const canProcess =
     sessionHasPermission(session, "check_out", "edit") ||
     sessionHasPermission(session, "check_out", "manage");
+  const canManageOverstay = sessionHasPermission(session, "check_out", "manage");
 
-  return { canView, canProcess };
+  return { canView, canProcess, canManageOverstay };
 }
 
 export function requireCheckOutView(session: AuthSession): void {

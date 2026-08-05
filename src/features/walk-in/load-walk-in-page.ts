@@ -5,6 +5,7 @@ import { ACCESS_DENIED_PATH } from "@/lib/auth/route-guard";
 import { getPaymentAccess } from "@/lib/auth/payment-access";
 import { getWalkInAccess } from "@/lib/auth/walk-in-access";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import {
   getDefaultTaxRate,
   isGlobalVatEnabled,
@@ -26,6 +27,7 @@ export async function loadWalkInPageData() {
 
   const paymentAccess = getPaymentAccess(session);
   const defaultTaxRate = await getDefaultTaxRate();
+  const businessDate = await getCurrentBusinessDate();
   const roomTypeService = await getRoomTypeService();
   const roomTypes = (await roomTypeService.list(ctx, session))
     .filter((rt) => rt.status === "active")
@@ -41,5 +43,6 @@ export async function loadWalkInPageData() {
     defaultVatApplied: isGlobalVatEnabled(defaultTaxRate),
     canOverrideVat: paymentAccess.canOverrideVat,
     roomTypes,
+    businessDate,
   };
 }

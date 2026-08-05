@@ -18,6 +18,8 @@ export const DbTables = {
   notifications: "notifications",
   activityLogs: "activity_logs",
   nightAudits: "night_audits",
+  nightAuditRevisions: "night_audit_revisions",
+  hotelOperatingDay: "hotel_operating_day",
   shiftHandovers: "shift_handovers",
   shiftHandoverTasks: "shift_handover_tasks",
   shiftHandoverIssues: "shift_handover_issues",

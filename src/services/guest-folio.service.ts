@@ -197,6 +197,15 @@ export interface IGuestFolioService {
     extraNights: number,
     notes?: string | null
   ): Promise<void>;
+  /** Phase 4 — posts accommodation overstay via existing folio engine (idempotent by sourceReference). */
+  integrateOverstayCharge(
+    ctx: ServiceContext,
+    session: AuthSession,
+    reservationId: string,
+    amount: number,
+    sourceReference: string,
+    description: string
+  ): Promise<FolioEntry | null>;
   integrateRoomMoveAdjustment(
     ctx: ServiceContext,
     session: AuthSession,
@@ -639,6 +648,17 @@ export class GuestFolioService implements IGuestFolioService {
     input: ManualChargeInput
   ): Promise<FolioEntry> {
     this.require(session, "create");
+    const { assertBusinessDayWritable } = await import(
+      "@/lib/operational-integrity/assert-business-day-writable"
+    );
+    await assertBusinessDayWritable(ctx, session, {
+      operation: "manual_folio_entry",
+      module: "guest_folio",
+      entityType: "guest_folio",
+      entityId: input.folioId,
+      metadata: { description: input.description },
+    });
+
     const folio = await this.folios.getById(input.folioId);
     if (!folio) {
       throw new ServiceError("Folio not found.", "NOT_FOUND", 404);
@@ -672,6 +692,16 @@ export class GuestFolioService implements IGuestFolioService {
         403
       );
     }
+
+    const { assertBusinessDayWritable } = await import(
+      "@/lib/operational-integrity/assert-business-day-writable"
+    );
+    await assertBusinessDayWritable(ctx, session, {
+      operation: "manual_folio_credit",
+      module: "guest_folio",
+      entityType: "guest_folio",
+      entityId: input.folioId,
+    });
 
     const total = roundCurrency(input.amount);
     return this.postEntry(ctx, session, {
@@ -932,14 +962,22 @@ export class GuestFolioService implements IGuestFolioService {
       debitCredit: "debit" | "credit";
       sourceReference?: string | null;
     }
-  ): Promise<void> {
+  ): Promise<FolioEntry | null> {
     const total = roundCurrency(input.amount);
-    if (total <= 0) return;
+    if (total <= 0) return null;
+
+    if (input.sourceReference) {
+      const existing = await this.findEntryBySourceReference(
+        reservationId,
+        input.sourceReference
+      );
+      if (existing) return existing;
+    }
 
     const reservation = await this.assertCheckedIn(reservationId);
     const folio = await this.ensureFolioInternal(reservation);
 
-    await this.postEntry(
+    return this.postEntry(
       ctx,
       session,
       {
@@ -955,6 +993,40 @@ export class GuestFolioService implements IGuestFolioService {
       },
       { internal: true }
     );
+  }
+
+  private async findEntryBySourceReference(
+    reservationId: string,
+    sourceReference: string
+  ): Promise<FolioEntry | null> {
+    const folios = await this.folios.listByReservationId(reservationId);
+    for (const folio of folios) {
+      const match = (folio.entries ?? []).find(
+        (entry) =>
+          entry.source_module === "reservations" &&
+          entry.source_reference === sourceReference
+      );
+      if (match) {
+        return {
+          id: match.id,
+          folioId: match.folio_id,
+          entryType: match.entry_type,
+          sourceModule: match.source_module,
+          sourceReference: match.source_reference,
+          description: match.description,
+          quantity: Number(match.quantity),
+          unitAmount: Number(match.unit_amount),
+          subtotal: Number(match.subtotal),
+          vatAmount: Number(match.vat_amount),
+          total: Number(match.total),
+          debitCredit: match.debit_credit,
+          createdById: match.created_by,
+          createdByName: null,
+          createdAt: match.created_at,
+        };
+      }
+    }
+    return null;
   }
 
   async integrateEarlyCheckoutAdjustment(
@@ -1052,6 +1124,23 @@ export class GuestFolioService implements IGuestFolioService {
       description: `Stay extension (${extraNights} night${extraNights === 1 ? "" : "s"})${suffix}`,
       amount,
       debitCredit: "debit",
+    });
+  }
+
+  async integrateOverstayCharge(
+    ctx: ServiceContext,
+    session: AuthSession,
+    reservationId: string,
+    amount: number,
+    sourceReference: string,
+    description: string
+  ): Promise<FolioEntry | null> {
+    return this.postStayModificationEntry(ctx, session, reservationId, {
+      entryType: "accommodation",
+      description,
+      amount,
+      debitCredit: "debit",
+      sourceReference,
     });
   }
 

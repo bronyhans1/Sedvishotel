@@ -50,6 +50,16 @@ export const reservationReport = {
   checkedOut: mockReservations.filter((r) => r.status === "checked_out").length,
   cancelled: mockReservations.filter((r) => r.status === "cancelled").length,
   noShow: mockReservations.filter((r) => r.status === "no_show").length,
+  expectedDepartures: 0,
+  lateCheckOuts: 0,
+  overstays: 0,
+  averageOverstayDays: 0,
+  overstayRevenue: 0,
+  overstayCharges: 0,
+  waivedOverstayCharges: 0,
+  pendingOverstayCharges: 0,
+  longestOverstayNights: 0,
+  monthlyOverstayRevenue: 0,
 };
 
 export const paymentReport = {

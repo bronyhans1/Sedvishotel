@@ -1,7 +1,9 @@
 import { buildDashboardStats } from "@/lib/dashboard-stats";
-import { getTodayDateString } from "@/lib/dates/today";
+import { getCalendarDateString } from "@/lib/dates/today";
+import { getCurrentTimeString } from "@/lib/dates/time";
 import { computeOccupancyFromRooms } from "@/lib/occupancy";
 import { computePaymentStats } from "@/lib/payments/stats";
+import { countDepartureClassifications } from "@/lib/reservations/departure-classification";
 import { selectPendingWebsiteReservations } from "@/lib/reservations/pending-website-reservations";
 import type { DbActivityLog } from "@/types/database";
 import type { DashboardHomeData } from "@/types/dashboard-home";
@@ -52,10 +54,23 @@ export function computeDashboardHomeData(input: {
   activityLogs: DbActivityLog[];
   showFinancials: boolean;
   asOfDate?: string;
+  calendarDate?: string;
+  policyCheckOutTime?: string;
+  currentTime?: string;
 }): DashboardHomeData {
-  const today = input.asOfDate ?? getTodayDateString();
+  const today = input.asOfDate ?? getCalendarDateString();
+  const calendarDate = input.calendarDate ?? getCalendarDateString();
+  const policyCheckOutTime = input.policyCheckOutTime ?? "11:00";
+  const currentTime = input.currentTime ?? getCurrentTimeString();
   const occupancy = computeOccupancyFromRooms(input.rooms);
-  const paymentStats = computePaymentStats(input.payments);
+  const paymentStats = computePaymentStats(input.payments, today);
+
+  const departureCounts = countDepartureClassifications(
+    input.reservations,
+    today,
+    policyCheckOutTime,
+    currentTime
+  );
 
   const pendingCheckIns = input.reservations.filter(
     (r) =>
@@ -63,9 +78,10 @@ export function computeDashboardHomeData(input: {
       r.checkInDate <= today
   ).length;
 
-  const pendingCheckOuts = input.reservations.filter(
-    (r) => r.status === "checked_in" && r.checkOutDate <= today
-  ).length;
+  const pendingCheckOuts =
+    departureCounts.expectedDepartures +
+    departureCounts.lateCheckOuts +
+    departureCounts.overstays;
 
   const activeStays = input.reservations.filter(
     (r) => r.status === "checked_in"
@@ -78,9 +94,7 @@ export function computeDashboardHomeData(input: {
       r.status !== "no_show"
   ).length;
 
-  const checkOutsToday = input.reservations.filter(
-    (r) => r.checkOutDate === today && r.status === "checked_in"
-  ).length;
+  const checkOutsToday = departureCounts.expectedDepartures;
 
   const stats = buildDashboardStats({
     rooms: input.rooms,
@@ -115,10 +129,24 @@ export function computeDashboardHomeData(input: {
       href: "/dashboard/housekeeping",
     });
   }
-  if (pendingCheckOuts > 0) {
+  if (departureCounts.overstays > 0) {
+    outstandingTasks.push({
+      id: "overstay",
+      label: `${departureCounts.overstays} overstay(s) require attention`,
+      href: "/dashboard/check-out",
+    });
+  }
+  if (departureCounts.lateCheckOuts > 0) {
+    outstandingTasks.push({
+      id: "late",
+      label: `${departureCounts.lateCheckOuts} late check-out(s)`,
+      href: "/dashboard/check-out",
+    });
+  }
+  if (departureCounts.expectedDepartures > 0) {
     outstandingTasks.push({
       id: "checkout",
-      label: `${pendingCheckOuts} pending check-out(s)`,
+      label: `${departureCounts.expectedDepartures} expected departure(s)`,
       href: "/dashboard/check-out",
     });
   }
@@ -131,6 +159,36 @@ export function computeDashboardHomeData(input: {
   }
 
   const operationalAlerts: DashboardHomeData["operationalAlerts"] = [];
+  if (departureCounts.overstays > 0) {
+    operationalAlerts.push({
+      id: "overstays",
+      message: `${departureCounts.overstays} Overstay${departureCounts.overstays === 1 ? "" : "s"} require attention.`,
+      severity: "critical",
+    });
+    const sample = input.reservations.find(
+      (r) =>
+        r.status === "checked_in" && r.checkOutDate < today
+    );
+    if (sample) {
+      operationalAlerts.push({
+        id: `overstay-${sample.id}`,
+        message: `Guest in Room ${sample.roomNumber} is now an Overstay.`,
+        severity: "critical",
+      });
+      operationalAlerts.push({
+        id: `hk-overstay-${sample.roomNumber}`,
+        message: `Room ${sample.roomNumber} cannot be cleaned until checkout.`,
+        severity: "medium",
+      });
+    }
+  }
+  if (departureCounts.lateCheckOuts > 0) {
+    operationalAlerts.push({
+      id: "late-checkouts",
+      message: `${departureCounts.lateCheckOuts} Late Check-Out${departureCounts.lateCheckOuts === 1 ? "" : "s"} on the board.`,
+      severity: "medium",
+    });
+  }
   if (paymentStats.outstandingBalances > 0 && input.showFinancials) {
     operationalAlerts.push({
       id: "balances",
@@ -148,7 +206,7 @@ export function computeDashboardHomeData(input: {
   if (pendingCheckIns > 0) {
     operationalAlerts.push({
       id: "checkin",
-      message: `${pendingCheckIns} pending check-in(s) for today`,
+      message: `${pendingCheckIns} pending check-in(s) for the business day`,
       severity: "low",
     });
   }
@@ -160,6 +218,9 @@ export function computeDashboardHomeData(input: {
     revenueMonth: paymentStats.revenueMonth,
     pendingCheckIns,
     pendingCheckOuts,
+    expectedDepartures: departureCounts.expectedDepartures,
+    lateCheckOuts: departureCounts.lateCheckOuts,
+    overstays: departureCounts.overstays,
     activeStays,
     recentPayments,
     recentReservations,
@@ -169,5 +230,7 @@ export function computeDashboardHomeData(input: {
     outstandingTasks,
     operationalAlerts,
     showFinancials: input.showFinancials,
+    businessDate: today,
+    calendarDate,
   };
 }

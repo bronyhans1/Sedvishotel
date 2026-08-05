@@ -336,6 +336,16 @@ export class InventoryService implements IInventoryService {
     input: StockAdjustmentInput
   ): Promise<StockMovement> {
     this.require(session, "edit");
+    const { assertBusinessDayWritable } = await import(
+      "@/lib/operational-integrity/assert-business-day-writable"
+    );
+    await assertBusinessDayWritable(ctx, session, {
+      operation: "inventory_adjustment",
+      module: "inventory",
+      entityType: "product",
+      entityId: input.productId,
+    });
+
     const product = await this.resolveProduct(input.productId);
 
     if (input.physicalCount < 0) {

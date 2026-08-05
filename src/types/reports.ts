@@ -35,6 +35,17 @@ export type ReservationReport = {
   checkedOut: number;
   cancelled: number;
   noShow: number;
+  expectedDepartures: number;
+  lateCheckOuts: number;
+  overstays: number;
+  averageOverstayDays: number;
+  /** Phase 4 — overstay revenue recovery metrics */
+  overstayRevenue: number;
+  overstayCharges: number;
+  waivedOverstayCharges: number;
+  pendingOverstayCharges: number;
+  longestOverstayNights: number;
+  monthlyOverstayRevenue: number;
 };
 
 export type PaymentReport = {

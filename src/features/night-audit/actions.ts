@@ -84,3 +84,45 @@ export async function exportNightAuditAction(
     return { success: false, error: toSafeActionError(err) };
   }
 }
+
+export type CorrectionSessionActionResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function openCorrectionSessionAction(
+  businessDate: string,
+  reason: string
+): Promise<CorrectionSessionActionResult> {
+  try {
+    const { session, ctx } = await getServiceContext();
+    const { getCorrectionSessionService } = await import(
+      "@/lib/operational-integrity/get-lock-services"
+    );
+    const service = await getCorrectionSessionService();
+    await service.openSession(ctx, session, { businessDate, reason });
+    revalidateOperationalFinancePaths({});
+    return { success: true };
+  } catch (err) {
+    unstable_rethrow(err);
+    return { success: false, error: toSafeActionError(err) };
+  }
+}
+
+export async function closeCorrectionSessionAction(
+  sessionId: string,
+  notes?: string
+): Promise<CorrectionSessionActionResult> {
+  try {
+    const { session, ctx } = await getServiceContext();
+    const { getCorrectionSessionService } = await import(
+      "@/lib/operational-integrity/get-lock-services"
+    );
+    const service = await getCorrectionSessionService();
+    await service.closeSession(ctx, session, sessionId, notes);
+    revalidateOperationalFinancePaths({});
+    return { success: true };
+  } catch (err) {
+    unstable_rethrow(err);
+    return { success: false, error: toSafeActionError(err) };
+  }
+}

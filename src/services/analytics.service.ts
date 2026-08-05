@@ -2,6 +2,10 @@ import { getAnalyticsAccess } from "@/lib/auth/analytics-access";
 import { computeDashboardHomeData } from "@/lib/analytics/dashboard";
 import { computeReportsData } from "@/lib/analytics/reports";
 import { computeRevenueData } from "@/lib/analytics/revenue";
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
+import { getCalendarDateString } from "@/lib/dates/today";
+import { getCurrentTimeString } from "@/lib/dates/time";
+import { loadCheckoutPolicy } from "@/lib/settings/checkout-policy";
 import type { IActivityLogRepository } from "@/repositories/activity-log.repository";
 import type { IGuestRepository } from "@/repositories/guest.repository";
 import type { IInvoiceRepository } from "@/repositories/invoice.repository";
@@ -77,7 +81,11 @@ export class AnalyticsService implements IAnalyticsService {
     }
 
     const data = await this.loadCoreData();
-    return computeRevenueData(data);
+    const businessDate = await getCurrentBusinessDate();
+    return computeRevenueData({
+      ...data,
+      asOfDate: businessDate,
+    });
   }
 
   async getReportsData(
@@ -93,7 +101,29 @@ export class AnalyticsService implements IAnalyticsService {
     }
 
     const data = await this.loadCoreData();
-    return computeReportsData(data);
+    const [businessDate, policy] = await Promise.all([
+      getCurrentBusinessDate(),
+      loadCheckoutPolicy(),
+    ]);
+
+    let overstayCharges: import("@/types/overstay").OverstayCharge[] = [];
+    try {
+      const { getOverstayService } = await import(
+        "@/lib/overstay/get-overstay-service"
+      );
+      const overstayService = await getOverstayService();
+      overstayCharges = await overstayService.listAllCharges();
+    } catch {
+      overstayCharges = [];
+    }
+
+    return computeReportsData({
+      ...data,
+      asOfDate: businessDate,
+      policyCheckOutTime: policy.checkOutTime,
+      currentTime: getCurrentTimeString(),
+      overstayCharges,
+    });
   }
 
   async getDashboardData(
@@ -109,15 +139,21 @@ export class AnalyticsService implements IAnalyticsService {
       );
     }
 
-    const [core, activityLogs] = await Promise.all([
+    const [core, activityLogs, businessDate, policy] = await Promise.all([
       this.loadCoreData(),
       this.activityLogs.findRecent(8),
+      getCurrentBusinessDate(),
+      loadCheckoutPolicy(),
     ]);
 
     return computeDashboardHomeData({
       ...core,
       activityLogs,
       showFinancials: access.showFinancials,
+      asOfDate: businessDate,
+      calendarDate: getCalendarDateString(),
+      policyCheckOutTime: policy.checkOutTime,
+      currentTime: getCurrentTimeString(),
     });
   }
 }

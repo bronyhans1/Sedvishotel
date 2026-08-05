@@ -37,6 +37,7 @@ export function buildNightAuditCsv(audit: NightAudit): string {
     `Audit Number,${audit.auditNumber}`,
     `Audit Date,${audit.auditDate}`,
     `Status,${audit.status}`,
+    `Revision,${audit.revisionNumber}`,
     "",
     "Occupancy",
     `Rooms Occupied,${audit.roomsOccupied}`,
@@ -77,6 +78,9 @@ export function buildNightAuditCsv(audit: NightAudit): string {
     "Closing",
     `Closed By,${audit.closedByName ?? ""}`,
     `Closed At,${audit.closedAt ?? ""}`,
+    `Reopened By,${audit.reopenedByName ?? ""}`,
+    `Reopened At,${audit.reopenedAt ?? ""}`,
+    `Reopen Reason,${audit.reopenReason ?? ""}`,
     `Notes,${audit.notes ?? ""}`,
   ];
   return lines.join("\n");

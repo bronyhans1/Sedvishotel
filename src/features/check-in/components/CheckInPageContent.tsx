@@ -53,7 +53,7 @@ export function CheckInPageContent({
   return (
     <PageContainer
       title="Check-In"
-      description={`Process arrivals at ${siteConfig.name} · Today: ${today}`}
+      description={`Process arrivals at ${siteConfig.name} · Business Date: ${today}`}
     >
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard

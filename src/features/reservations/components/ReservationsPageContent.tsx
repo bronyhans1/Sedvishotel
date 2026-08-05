@@ -20,6 +20,7 @@ import type {
 } from "@/features/reservations/load-reservations-page";
 import type { ReservationAccess } from "@/lib/auth/reservation-access.types";
 import { siteConfig } from "@/config/site";
+import type { CheckoutPolicy } from "@/types/late-checkout";
 import type { Reservation, ReservationStats } from "@/types/reservation";
 
 const defaultFilters: ReservationFilterState = {
@@ -36,6 +37,8 @@ type ReservationsPageContentProps = {
   stats: ReservationStats;
   access: ReservationAccess;
   roomTypeOptions: ReservationRoomTypeOption[];
+  businessDate: string;
+  checkoutPolicy: CheckoutPolicy;
   initialFilters?: Partial<ReservationFilterState>;
 };
 
@@ -44,6 +47,8 @@ export function ReservationsPageContent({
   stats,
   access,
   roomTypeOptions,
+  businessDate,
+  checkoutPolicy,
   initialFilters,
 }: ReservationsPageContentProps) {
   const router = useRouter();
@@ -116,6 +121,8 @@ export function ReservationsPageContent({
           reservations={filtered}
           canEdit={access.canEdit}
           onEdit={access.canEdit ? setEditRes : undefined}
+          businessDate={businessDate}
+          policyCheckOutTime={checkoutPolicy.checkOutTime}
         />
       )}
 

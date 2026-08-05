@@ -48,4 +48,6 @@ export type CheckoutPolicy = {
   hourFee1To2: number;
   hourFee2To4: number;
   hourFee4To6: number;
+  /** Overstay Policy — loaded with checkout policy (same hotel settings row). */
+  overstay: import("@/types/overstay").OverstayPolicy;
 };

@@ -4,7 +4,7 @@ import { ACCESS_DENIED_PATH } from "@/lib/auth/route-guard";
 
 import { getCheckInAccess } from "@/lib/auth/check-in-access";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
-import { getTodayDateString } from "@/lib/dates/today";
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import { getReservationService } from "@/lib/reservations/get-reservation-service";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -20,7 +20,7 @@ export async function loadCheckInPageData() {
     redirect(ACCESS_DENIED_PATH);
   }
 
-  const today = getTodayDateString();
+  const today = await getCurrentBusinessDate();
   const service = await getReservationService();
 
   const [pendingCheckIns, stats] = await Promise.all([

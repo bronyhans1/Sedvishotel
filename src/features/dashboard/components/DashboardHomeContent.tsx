@@ -27,6 +27,7 @@ import type { GroupDashboardContract } from "@/types/group-dashboard";
 import {
   CircleDollarSign,
   Percent,
+  Clock,
   LogIn,
   LogOut,
   AlertCircle,
@@ -63,6 +64,9 @@ export function DashboardHomeContent({
     revenueMonth,
     pendingCheckIns,
     pendingCheckOuts,
+    expectedDepartures,
+    lateCheckOuts,
+    overstays,
     activeStays,
     recentPayments,
     recentReservations,
@@ -72,12 +76,16 @@ export function DashboardHomeContent({
     outstandingTasks,
     operationalAlerts,
     showFinancials,
+    businessDate,
+    calendarDate,
   } = data;
 
   return (
     <PageContainer
       title="Dashboard"
-      description={`Overview of ${siteConfig.name} operations for today.`}
+      description={`Business Date ${businessDate}${
+        calendarDate !== businessDate ? ` · Calendar ${calendarDate}` : ""
+      } · ${siteConfig.name}`}
       actions={
         <>
           <StatusBadge status="live" label="Live Data" />
@@ -148,11 +156,49 @@ export function DashboardHomeContent({
         )}
         <StatCard title="Occupancy" value={`${stats.occupancyRate}%`} icon={Percent} />
         <StatCard title="Pending Check-Ins" value={pendingCheckIns} icon={LogIn} iconClassName="bg-amber-500/10 text-amber-600" />
-        <StatCard title="Pending Check-Outs" value={pendingCheckOuts} icon={LogOut} />
+        <StatCard title="Expected Departures" value={expectedDepartures} icon={LogOut} />
+        <StatCard title="Late Check-Outs" value={lateCheckOuts} icon={Clock} iconClassName="bg-amber-500/10 text-amber-600" />
+        <StatCard title="Overstays" value={overstays} icon={AlertCircle} iconClassName="bg-red-500/10 text-red-600" />
         <StatCard title="Active Stays" value={activeStays} icon={BedDouble} iconClassName="bg-blue-500/10 text-blue-600" />
         {showFinancials && (
           <StatCard title="Payments Today" value={paymentStats.revenueToday > 0 ? formatCurrency(paymentStats.revenueToday) : "0"} icon={Wallet} />
         )}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Today&apos;s Expected Departures</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold">{expectedDepartures}</p>
+            <Button variant="link" className="h-auto px-0" asChild>
+              <Link href="/dashboard/check-out">Open Check-Out</Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Late Check-Outs</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-amber-700 dark:text-amber-400">{lateCheckOuts}</p>
+            <Button variant="link" className="h-auto px-0" asChild>
+              <Link href="/dashboard/check-out">Review late departures</Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Overstays</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-red-700 dark:text-red-400">{overstays}</p>
+            <Button variant="link" className="h-auto px-0" asChild>
+              <Link href="/dashboard/check-out">Review overstays</Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
       <PendingWebsiteReservationsWidget reservations={pendingWebsiteReservations} />

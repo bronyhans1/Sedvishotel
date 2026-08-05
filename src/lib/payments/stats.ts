@@ -21,9 +21,12 @@ function isRevenueCountable(payment: Payment): boolean {
   return payment.netPaid > 0;
 }
 
-export function computePaymentStats(payments: Payment[]): PaymentStats {
-  const now = new Date();
-  const today = now.toISOString().slice(0, 10);
+export function computePaymentStats(
+  payments: Payment[],
+  asOfDate?: string
+): PaymentStats {
+  const now = asOfDate ? new Date(`${asOfDate}T12:00:00`) : new Date();
+  const today = asOfDate ?? now.toISOString().slice(0, 10);
   const weekStart = startOfWeek(now);
   const monthStart = startOfMonth(now);
 

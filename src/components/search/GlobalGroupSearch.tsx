@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 
+import { DepartureClassificationBadge } from "@/components/reservations/DepartureClassificationBadge";
 import { Input } from "@/components/ui/input";
 import { searchGroupsAction } from "@/features/group-reservations/actions";
 import type { GroupSearchResult } from "@/lib/group-reservations/search-contract";
@@ -55,15 +56,24 @@ export function GlobalGroupSearch() {
             <Link
               key={`${r.kind}-${r.id}`}
               href={r.href ?? "#"}
-              className="block px-4 py-2 text-sm hover:bg-muted"
+              className="flex items-start justify-between gap-2 px-4 py-2 text-sm hover:bg-muted"
             >
-              <span className="font-medium">{r.label}</span>
-              {r.sublabel && (
-                <span className="ml-2 text-muted-foreground">{r.sublabel}</span>
-              )}
-              <span className="ml-2 text-xs capitalize text-muted-foreground">
-                {r.kind}
-              </span>
+              <div className="min-w-0">
+                <span className="font-medium">{r.label}</span>
+                {r.sublabel && (
+                  <span className="ml-2 text-muted-foreground">{r.sublabel}</span>
+                )}
+                <span className="ml-2 text-xs capitalize text-muted-foreground">
+                  {r.kind}
+                </span>
+              </div>
+              {r.departureClassification ? (
+                <DepartureClassificationBadge
+                  classification={r.departureClassification}
+                  label={r.departureLabel ?? undefined}
+                  className="shrink-0"
+                />
+              ) : null}
             </Link>
           ))}
         </div>

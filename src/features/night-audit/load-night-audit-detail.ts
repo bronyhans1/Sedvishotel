@@ -3,13 +3,17 @@ import { notFound, redirect } from "next/navigation";
 import { ACCESS_DENIED_PATH } from "@/lib/auth/route-guard";
 import { getNightAuditAccess } from "@/lib/auth/night-audit-access";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import { getNightAuditService } from "@/lib/night-audit/get-night-audit-service";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import type { NightAudit } from "@/types/night-audit";
+import type { NightAudit, NightAuditRevision, NightAuditSnapshot } from "@/types/night-audit";
 
 export async function loadNightAuditDetailData(ref: string): Promise<{
   audit: NightAudit;
   access: ReturnType<typeof getNightAuditAccess>;
+  liveSnapshot: NightAuditSnapshot | null;
+  revisions: NightAuditRevision[];
+  isToday: boolean;
 }> {
   if (!isSupabaseConfigured()) {
     redirect("/login");
@@ -34,5 +38,15 @@ export async function loadNightAuditDetailData(ref: string): Promise<{
     notFound();
   }
 
-  return { audit, access };
+  const isToday = audit.auditDate === (await getCurrentBusinessDate());
+  const liveSnapshot =
+    audit.status === "open"
+      ? await service.generateSnapshot(ctx, session, audit.auditDate)
+      : null;
+
+  const revisions = access.canViewRevisions
+    ? await service.listRevisions(ctx, session, audit.auditNumber)
+    : [];
+
+  return { audit, access, liveSnapshot, revisions, isToday };
 }

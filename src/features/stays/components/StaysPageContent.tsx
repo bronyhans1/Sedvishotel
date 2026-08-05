@@ -5,6 +5,7 @@ import { Eye } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { GuestStatusBadge } from "@/components/guests/GuestStatusBadge";
+import { DepartureClassificationBadge } from "@/components/reservations/DepartureClassificationBadge";
 import { StayDetailsDrawer } from "@/components/stays/StayDetailsDrawer";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { StatCard } from "@/components/shared/StatCard";
@@ -12,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { useLiveRefresh } from "@/hooks/use-live-refresh";
 import type { StaysAccess } from "@/lib/auth/stays-access.types";
 import type { CheckOutAccess } from "@/lib/auth/check-out-access.types";
+import { getCurrentTimeString } from "@/lib/dates/time";
+import { resolveDepartureClassification } from "@/lib/reservations/departure-classification";
 import type { CheckoutPolicy } from "@/types/late-checkout";
 import { siteConfig } from "@/config/site";
 import type { ActiveStay, StayStats } from "@/types/stay";
@@ -23,6 +26,7 @@ type StaysPageContentProps = {
   access: StaysAccess;
   checkoutAccess: CheckOutAccess;
   checkoutPolicy: CheckoutPolicy;
+  businessDate: string;
 };
 
 export function StaysPageContent({
@@ -30,11 +34,13 @@ export function StaysPageContent({
   stayStats,
   checkoutAccess,
   checkoutPolicy,
+  businessDate,
 }: StaysPageContentProps) {
   const router = useRouter();
   const liveRefresh = useLiveRefresh();
   const [selected, setSelected] = useState<ActiveStay | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const currentTime = getCurrentTimeString();
 
   function refresh() {
     liveRefresh();
@@ -44,7 +50,7 @@ export function StaysPageContent({
   return (
     <PageContainer
       title="Active Stays"
-      description={`Guests currently in-house at ${siteConfig.name}.`}
+      description={`Guests currently in-house at ${siteConfig.name} · Business Date: ${businessDate}`}
     >
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -94,7 +100,16 @@ export function StaysPageContent({
                   </td>
                 </tr>
               ) : (
-                activeStays.map((stay) => (
+                activeStays.map((stay) => {
+                  const departure = resolveDepartureClassification({
+                    status: stay.status,
+                    checkInDate: stay.checkInDate,
+                    scheduledCheckOutDate: stay.expectedCheckOut,
+                    businessDate,
+                    currentTime,
+                    policyCheckOutTime: checkoutPolicy.checkOutTime,
+                  });
+                  return (
                   <tr key={stay.id} className="hover:bg-muted/30">
                     <td className="px-4 py-3 font-medium">{stay.guestName}</td>
                     <td className="px-4 py-3 font-mono">{stay.roomNumber}</td>
@@ -104,7 +119,12 @@ export function StaysPageContent({
                     <td className="px-4 py-3">{stay.checkInDate}</td>
                     <td className="px-4 py-3">{stay.expectedCheckOut}</td>
                     <td className="px-4 py-3">
-                      <GuestStatusBadge status={stay.guestStatus} />
+                      <div className="flex flex-wrap items-center gap-1">
+                        <GuestStatusBadge status={stay.guestStatus} />
+                        <DepartureClassificationBadge
+                          classification={departure.classification}
+                        />
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Button
@@ -120,7 +140,8 @@ export function StaysPageContent({
                       </Button>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -133,6 +154,7 @@ export function StaysPageContent({
         onOpenChange={setDrawerOpen}
         checkoutAccess={checkoutAccess}
         checkoutPolicy={checkoutPolicy}
+        businessDate={businessDate}
         onEarlyCheckOutSuccess={refresh}
       />
     </PageContainer>

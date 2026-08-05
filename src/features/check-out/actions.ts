@@ -191,3 +191,68 @@ export async function completeLateCheckOutAction(
     return { success: false, error: toSafeActionError(err) };
   }
 }
+
+export type OverstayChargeActionResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function approveOverstayChargeAction(
+  chargeId: string,
+  notes?: string
+): Promise<OverstayChargeActionResult> {
+  try {
+    const { session, ctx } = await getServiceContext();
+    const { getOverstayService } = await import(
+      "@/lib/overstay/get-overstay-service"
+    );
+    const service = await getOverstayService();
+    await service.approveCharge(ctx, session, chargeId, notes);
+    revalidatePath("/dashboard/check-out");
+    revalidatePath("/dashboard/reports");
+    revalidateDashboardWidgets();
+    return { success: true };
+  } catch (err) {
+    unstable_rethrow(err);
+    return { success: false, error: toSafeActionError(err) };
+  }
+}
+
+export async function rejectOverstayChargeAction(
+  chargeId: string,
+  reason: string
+): Promise<OverstayChargeActionResult> {
+  try {
+    const { session, ctx } = await getServiceContext();
+    const { getOverstayService } = await import(
+      "@/lib/overstay/get-overstay-service"
+    );
+    const service = await getOverstayService();
+    await service.rejectCharge(ctx, session, chargeId, reason);
+    revalidatePath("/dashboard/check-out");
+    revalidateDashboardWidgets();
+    return { success: true };
+  } catch (err) {
+    unstable_rethrow(err);
+    return { success: false, error: toSafeActionError(err) };
+  }
+}
+
+export async function waiveOverstayChargeAction(
+  chargeId: string,
+  reason: string
+): Promise<OverstayChargeActionResult> {
+  try {
+    const { session, ctx } = await getServiceContext();
+    const { getOverstayService } = await import(
+      "@/lib/overstay/get-overstay-service"
+    );
+    const service = await getOverstayService();
+    await service.waiveCharge(ctx, session, chargeId, reason);
+    revalidatePath("/dashboard/check-out");
+    revalidateDashboardWidgets();
+    return { success: true };
+  } catch (err) {
+    unstable_rethrow(err);
+    return { success: false, error: toSafeActionError(err) };
+  }
+}

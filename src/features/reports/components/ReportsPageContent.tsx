@@ -38,9 +38,14 @@ const icons: Record<string, React.ComponentType<{ className?: string }>> = {
 type ReportsPageContentProps = {
   data: ReportsData;
   groupReports?: GroupReportsContract;
+  businessDate?: string;
 };
 
-export function ReportsPageContent({ data, groupReports }: ReportsPageContentProps) {
+export function ReportsPageContent({
+  data,
+  groupReports,
+  businessDate,
+}: ReportsPageContentProps) {
   const [exportMsg, setExportMsg] = useState("");
   const [, startTransition] = useTransition();
 
@@ -67,14 +72,24 @@ export function ReportsPageContent({ data, groupReports }: ReportsPageContentPro
 
   if (data.cards.length === 0) {
     return (
-      <PageContainer title="Reports" description={`Analytics and exports for ${siteConfig.name}.`}>
+      <PageContainer
+        title="Reports"
+        description={`Analytics and exports for ${siteConfig.name}${
+          businessDate ? ` · Business Date ${businessDate}` : ""
+        }.`}
+      >
         <ReportsEmptyState />
       </PageContainer>
     );
   }
 
   return (
-    <PageContainer title="Reports" description={`Analytics and exports for ${siteConfig.name}.`}>
+    <PageContainer
+      title="Reports"
+      description={`Analytics and exports for ${siteConfig.name}${
+        businessDate ? ` · Business Date ${businessDate}` : ""
+      }.`}
+    >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {data.cards.map((card) => {
           const Icon = icons[card.id] ?? BarChart3;

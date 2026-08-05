@@ -58,6 +58,22 @@ export function mapDbSettingsToHotelSettings(row: DbHotelSettings): HotelSetting
     lateCheckoutHourFee1To2: Number(row.late_checkout_hour_fee_1_2 ?? 50),
     lateCheckoutHourFee2To4: Number(row.late_checkout_hour_fee_2_4 ?? 100),
     lateCheckoutHourFee4To6: Number(row.late_checkout_hour_fee_4_6 ?? 150),
+    overstayChargeMode:
+      row.overstay_charge_mode === "one_additional_night" ||
+      row.overstay_charge_mode === "every_additional_night"
+        ? row.overstay_charge_mode
+        : "none",
+    overstayManagerApprovalRequired: Boolean(
+      row.overstay_manager_approval_required ?? false
+    ),
+    overstayAllowManualWaiver: row.overstay_allow_manual_waiver ?? true,
+    overstayAutoCreatePendingCharge:
+      row.overstay_auto_create_pending_charge ?? true,
+    overstayNightAuditMode:
+      row.overstay_night_audit_mode === "continue" ||
+      row.overstay_night_audit_mode === "require_manager"
+        ? row.overstay_night_audit_mode
+        : "acknowledge",
     currency: row.currency,
     currencySymbol: readJsonString(json, "currencySymbol", "GH₵"),
     currencyPosition:
@@ -117,6 +133,11 @@ export function mapHotelSettingsToDbUpdate(
     late_checkout_hour_fee_1_2: settings.lateCheckoutHourFee1To2,
     late_checkout_hour_fee_2_4: settings.lateCheckoutHourFee2To4,
     late_checkout_hour_fee_4_6: settings.lateCheckoutHourFee4To6,
+    overstay_charge_mode: settings.overstayChargeMode,
+    overstay_manager_approval_required: settings.overstayManagerApprovalRequired,
+    overstay_allow_manual_waiver: settings.overstayAllowManualWaiver,
+    overstay_auto_create_pending_charge: settings.overstayAutoCreatePendingCharge,
+    overstay_night_audit_mode: settings.overstayNightAuditMode,
     currency: settings.currency,
     timezone: settings.timeZone,
     tax_rate: settings.taxRate,

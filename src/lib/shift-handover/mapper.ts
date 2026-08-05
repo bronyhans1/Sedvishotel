@@ -39,6 +39,7 @@ export function mapDbShiftHandoverToShiftHandover(
     openedAt: row.opened_at,
     closedAt: row.closed_at,
     acknowledgedAt: row.acknowledged_at,
+    businessDate: row.business_date ?? null,
     cashDrawerAmount: Number(row.cash_drawer_amount),
     closingCash: row.closing_cash != null ? Number(row.closing_cash) : null,
     cashVariance: computeCashVariance(

@@ -52,10 +52,17 @@ export function LoginPageClient({
           <LoginForm devAuthHint={devAuthHint} initialError={initialError} />
         </div>
 
-        <div className="relative z-10 mt-8 space-y-0.5 text-center text-xs text-muted-foreground">
+        <div className="relative z-10 mt-8 space-y-1 text-center text-xs text-muted-foreground">
           <p>© {new Date().getFullYear()} {hotelName}. All rights reserved.</p>
           <p className="text-muted-foreground/75">Developer: Brony Hans</p>
-          <p className="text-muted-foreground/75">Version {siteConfig.version}</p>
+          <div className="pt-1">
+            <p className="font-medium tracking-wide text-muted-foreground/90">
+              SHMS v{siteConfig.version}
+            </p>
+            <p className="mt-0.5 text-[11px] uppercase tracking-[0.18em] text-brand-gold/90">
+              {siteConfig.edition}
+            </p>
+          </div>
         </div>
       </div>
     </BrandingProvider>

@@ -8,6 +8,7 @@ import { getServiceContextForPage } from "@/lib/auth/service-context";
 import { getReservationService } from "@/lib/reservations/get-reservation-service";
 import { getRoomTypeService } from "@/lib/room-types/get-room-type-service";
 import { loadReservationFinanceContext } from "@/lib/documents/load-reservation-finance-context";
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import { loadCheckoutPolicy } from "@/lib/settings/checkout-policy";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { ReservationRoomTypeOption } from "@/features/reservations/load-reservations-page";
@@ -28,12 +29,14 @@ export async function loadReservationDetail(id: string) {
   const reservationService = await getReservationService();
   const roomTypeService = await getRoomTypeService();
 
-  const [reservation, roomTypes, checkoutPolicy, finance] = await Promise.all([
-    reservationService.getReservationById(ctx, session, id),
-    roomTypeService.list(ctx, session),
-    loadCheckoutPolicy(),
-    loadReservationFinanceContext(ctx, session, id),
-  ]);
+  const [reservation, roomTypes, checkoutPolicy, finance, businessDate] =
+    await Promise.all([
+      reservationService.getReservationById(ctx, session, id),
+      roomTypeService.list(ctx, session),
+      loadCheckoutPolicy(),
+      loadReservationFinanceContext(ctx, session, id),
+      getCurrentBusinessDate(),
+    ]);
 
   if (!reservation) {
     notFound();
@@ -56,5 +59,6 @@ export async function loadReservationDetail(id: string) {
     roomTypeOptions,
     checkoutPolicy,
     finance,
+    businessDate,
   };
 }

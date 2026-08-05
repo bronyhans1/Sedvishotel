@@ -37,6 +37,9 @@ export type DashboardHomeData = {
   revenueMonth: number;
   pendingCheckIns: number;
   pendingCheckOuts: number;
+  expectedDepartures: number;
+  lateCheckOuts: number;
+  overstays: number;
   activeStays: number;
   recentPayments: Payment[];
   recentReservations: Reservation[];
@@ -46,4 +49,8 @@ export type DashboardHomeData = {
   outstandingTasks: DashboardTaskItem[];
   operationalAlerts: DashboardAlertItem[];
   showFinancials: boolean;
+  /** Operational Business Date used for "today" buckets. */
+  businessDate: string;
+  /** Wall-clock calendar date for reference. */
+  calendarDate: string;
 };

@@ -22,6 +22,12 @@ export type HotelSettings = {
   lateCheckoutHourFee1To2: number;
   lateCheckoutHourFee2To4: number;
   lateCheckoutHourFee4To6: number;
+  /** Overstay Policy (Phase 4) — alongside Late Check-Out, not a replacement. */
+  overstayChargeMode: import("@/types/overstay").OverstayChargeMode;
+  overstayManagerApprovalRequired: boolean;
+  overstayAllowManualWaiver: boolean;
+  overstayAutoCreatePendingCharge: boolean;
+  overstayNightAuditMode: import("@/types/overstay").OverstayNightAuditMode;
   currency: string;
   currencySymbol: string;
   currencyPosition: "before" | "after";

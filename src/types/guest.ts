@@ -6,6 +6,17 @@ export type IdType =
   | "drivers_license"
   | "other";
 
+/** Current-stay operational status for search / guest list (Phase 3). */
+export type GuestOperationalStay = {
+  classification:
+    | "expected_departure"
+    | "late_checkout"
+    | "overstay"
+    | "in_house";
+  roomNumber: string;
+  label: string;
+};
+
 export type Guest = {
   id: string;
   fullName: string;
@@ -20,6 +31,8 @@ export type Guest = {
   totalSpent: number;
   vipStatus: boolean;
   notes: string[];
+  /** Present when guest has an active checked-in reservation. */
+  operationalStay?: GuestOperationalStay | null;
 };
 
 export type GuestStats = {

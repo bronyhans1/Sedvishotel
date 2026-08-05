@@ -15,15 +15,19 @@ import { useRouter } from "next/navigation";
 
 import { EditGuestModal } from "@/components/guests/EditGuestModal";
 import { GuestStatusBadge } from "@/components/guests/GuestStatusBadge";
+import { DepartureClassificationBadge } from "@/components/reservations/DepartureClassificationBadge";
 import { ReservationStatusBadge } from "@/components/reservations/ReservationStatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import type { GuestAccess } from "@/lib/auth/guest-access.types";
+import { getCurrentTimeString } from "@/lib/dates/time";
 import type { GuestProfileInsights } from "@/lib/guests/profile-insights";
 import { getGuestStayHistory } from "@/lib/guests/stay-history";
+import { resolveDepartureClassification } from "@/lib/reservations/departure-classification";
 import { formatCurrency } from "@/lib/utils";
 import { GUEST_STATUS_OPTIONS, ID_TYPE_OPTIONS, type Guest } from "@/types/guest";
+import type { CheckoutPolicy } from "@/types/late-checkout";
 import type { Reservation, ReservationStatus } from "@/types/reservation";
 
 const idLabels = Object.fromEntries(
@@ -39,6 +43,8 @@ type GuestDetailsContentProps = {
   access: GuestAccess;
   guestReservations: Reservation[];
   profileInsights: GuestProfileInsights;
+  businessDate: string;
+  checkoutPolicy: CheckoutPolicy;
 };
 
 function formatValue(value: string | number | null | undefined): string {
@@ -51,10 +57,28 @@ export function GuestDetailsContent({
   access,
   guestReservations,
   profileInsights,
+  businessDate,
+  checkoutPolicy,
 }: GuestDetailsContentProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [editOpen, setEditOpen] = useState(false);
+  const currentTime = getCurrentTimeString();
+
+  const currentStay = useMemo(
+    () => guestReservations.find((r) => r.status === "checked_in") ?? null,
+    [guestReservations]
+  );
+  const currentDeparture = currentStay
+    ? resolveDepartureClassification({
+        status: currentStay.status,
+        checkInDate: currentStay.checkInDate,
+        scheduledCheckOutDate: currentStay.checkOutDate,
+        businessDate,
+        currentTime,
+        policyCheckOutTime: checkoutPolicy.checkOutTime,
+      })
+    : null;
 
   const stayHistory = useMemo(
     () => getGuestStayHistory(guest.id, guestReservations),
@@ -91,7 +115,21 @@ export function GuestDetailsContent({
               <Crown className="h-6 w-6 text-brand-gold" />
             )}
           </div>
-          <GuestStatusBadge status={guest.guestStatus} />
+          <div className="flex flex-wrap items-center gap-2">
+            <GuestStatusBadge status={guest.guestStatus} />
+            {currentDeparture ? (
+              <DepartureClassificationBadge
+                classification={currentDeparture.classification}
+              />
+            ) : null}
+          </div>
+          {currentStay ? (
+            <p className="text-sm text-muted-foreground">
+              Current stay · Room {currentStay.roomNumber} · Scheduled out{" "}
+              {currentStay.checkOutDate}
+              {currentDeparture ? ` · ${currentDeparture.label}` : ""}
+            </p>
+          ) : null}
         </div>
         {access.canEdit && (
           <Button size="sm" onClick={() => setEditOpen(true)}>
@@ -288,9 +326,30 @@ export function GuestDetailsContent({
                     <td className="py-3">{stay.checkOutDate}</td>
                     <td className="py-3">{formatCurrency(stay.amountPaid)}</td>
                     <td className="py-3">
-                      <ReservationStatusBadge
-                        status={stay.status as ReservationStatus}
-                      />
+                      <div className="flex flex-wrap gap-1">
+                        <ReservationStatusBadge
+                          status={stay.status as ReservationStatus}
+                        />
+                        {(() => {
+                          const res = guestReservations.find(
+                            (r) => r.id === stay.reservationId
+                          );
+                          if (!res) return null;
+                          const dep = resolveDepartureClassification({
+                            status: res.status,
+                            checkInDate: res.checkInDate,
+                            scheduledCheckOutDate: res.checkOutDate,
+                            businessDate,
+                            currentTime,
+                            policyCheckOutTime: checkoutPolicy.checkOutTime,
+                          });
+                          return (
+                            <DepartureClassificationBadge
+                              classification={dep.classification}
+                            />
+                          );
+                        })()}
+                      </div>
                     </td>
                   </tr>
                 ))}

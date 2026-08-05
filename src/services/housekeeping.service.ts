@@ -1,8 +1,14 @@
 import { getHousekeepingAccess } from "@/lib/auth/housekeeping-access";
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
+import { getCurrentTimeString } from "@/lib/dates/time";
 import {
   computeHousekeepingStats,
   mapRoomToHousekeepingTask,
 } from "@/lib/housekeeping/mapper";
+import { resolveDepartureClassification } from "@/lib/reservations/departure-classification";
+import { resolveFloorLabel } from "@/lib/rooms/mapper";
+import { mapDbReservationToReservation } from "@/lib/reservations/mapper";
+import { loadCheckoutPolicy } from "@/lib/settings/checkout-policy";
 import type { IActivityLogRepository } from "@/repositories/activity-log.repository";
 import type { IHousekeepingRepository } from "@/repositories/housekeeping.repository";
 import type { INotificationRepository } from "@/repositories/notification.repository";
@@ -20,7 +26,11 @@ export interface IHousekeepingService {
   listTasks(
     ctx: ServiceContext,
     session: AuthSession
-  ): Promise<{ tasks: HousekeepingTask[]; stats: HousekeepingStats }>;
+  ): Promise<{
+    tasks: HousekeepingTask[];
+    stats: HousekeepingStats;
+    departureWatch: HousekeepingTask[];
+  }>;
   markCleaningStarted(
     ctx: ServiceContext,
     session: AuthSession,
@@ -189,10 +199,21 @@ export class HousekeepingService implements IHousekeepingService {
   async listTasks(
     _ctx: ServiceContext,
     session: AuthSession
-  ): Promise<{ tasks: HousekeepingTask[]; stats: HousekeepingStats }> {
+  ): Promise<{
+    tasks: HousekeepingTask[];
+    stats: HousekeepingStats;
+    departureWatch: HousekeepingTask[];
+  }> {
     this.requireView(session);
 
-    const rooms = await this.rooms.getAll(false);
+    const [rooms, businessDate, policy, allReservations] = await Promise.all([
+      this.rooms.getAll(false),
+      getCurrentBusinessDate(),
+      loadCheckoutPolicy(),
+      this.reservations.getAll(),
+    ]);
+    const currentTime = getCurrentTimeString();
+
     const boardRooms = rooms.filter((room) =>
       ["cleaning", "available", "maintenance"].includes(room.status)
     );
@@ -210,7 +231,60 @@ export class HousekeepingService implements IHousekeepingService {
       if (mapped) tasks.push(mapped);
     }
 
-    return { tasks, stats: computeHousekeepingStats(tasks) };
+    const checkedIn = allReservations
+      .map(mapDbReservationToReservation)
+      .filter((r) => r.status === "checked_in");
+
+    const departureWatch: HousekeepingTask[] = [];
+    for (const reservation of checkedIn) {
+      const resolved = resolveDepartureClassification({
+        status: reservation.status,
+        checkInDate: reservation.checkInDate,
+        scheduledCheckOutDate: reservation.checkOutDate,
+        businessDate,
+        currentTime,
+        policyCheckOutTime: policy.checkOutTime,
+      });
+      if (
+        resolved.classification !== "expected_departure" &&
+        resolved.classification !== "late_checkout" &&
+        resolved.classification !== "overstay"
+      ) {
+        continue;
+      }
+
+      const room = rooms.find((r) => r.room_number === reservation.roomNumber);
+      if (!room) continue;
+
+      const hkLabel =
+        resolved.classification === "overstay"
+          ? "Overstay — cannot clean until checkout"
+          : resolved.classification === "late_checkout"
+            ? "Late checkout"
+            : "Room waiting for checkout";
+
+      departureWatch.push({
+        id: `departure_${reservation.id}`,
+        roomId: room.id,
+        roomNumber: room.room_number,
+        roomTypeName: room.room_type.name,
+        floorLabel: resolveFloorLabel(room),
+        status: "pending_cleaning",
+        assignedStaff: "Front desk",
+        notes: hkLabel,
+        lastGuest: reservation.guestName,
+        lastCheckoutTime: "—",
+        expectedCompletion: "—",
+        departureLabel: hkLabel,
+        departureClassification: resolved.classification,
+      });
+    }
+
+    return {
+      tasks,
+      stats: computeHousekeepingStats(tasks),
+      departureWatch,
+    };
   }
 
   async markCleaningStarted(

@@ -23,6 +23,14 @@ export type GroupSearchResult = {
   label: string;
   sublabel?: string;
   href?: string;
+  /** Operational stay classification when guest/reservation is checked in. */
+  departureClassification?:
+    | "expected_departure"
+    | "late_checkout"
+    | "overstay"
+    | "in_house"
+    | null;
+  departureLabel?: string | null;
 };
 
 export type GroupSearchContract = {

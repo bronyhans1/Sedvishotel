@@ -13,11 +13,13 @@ import { EnhancedGroupOperationsPanel } from "@/features/group-reservations/comp
 import { ReservationBlockVisualization } from "@/features/group-reservations/components/ReservationBlockVisualization";
 import { GroupStatusBadge } from "@/components/group-reservations/GroupStatusBadge";
 import { PricingCard } from "@/components/pricing/PricingCard";
+import { DepartureClassificationBadge } from "@/components/reservations/DepartureClassificationBadge";
 import { ReservationStatusBadge } from "@/components/reservations/ReservationStatusBadge";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { resolveDepartureClassification } from "@/lib/reservations/departure-classification";
 import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
 import {
   bulkGroupCheckInAction,
@@ -57,8 +59,18 @@ type Props = {
 };
 
 export function GroupDetailPageContent({ data, initialTab = "overview" }: Props) {
-  const { group, summary, financial, overview, timeline, childFolios, access, intelligence } =
-    data;
+  const {
+    group,
+    summary,
+    financial,
+    overview,
+    timeline,
+    childFolios,
+    access,
+    intelligence,
+    businessDate,
+    checkoutPolicy,
+  } = data;
   const [tab, setTab] = useState(initialTab);
   const [timelineFilter, setTimelineFilter] = useState<string>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -217,7 +229,18 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {overview.reservations.map((r) => (
+                {overview.reservations.map((r) => {
+                  const departure =
+                    r.status === "checked_in"
+                      ? resolveDepartureClassification({
+                          status: r.status,
+                          checkInDate: r.checkInDate,
+                          scheduledCheckOutDate: r.checkOutDate,
+                          businessDate,
+                          policyCheckOutTime: checkoutPolicy.checkOutTime,
+                        })
+                      : null;
+                  return (
                   <tr key={r.id}>
                     <td className="px-4 py-2">
                       <input
@@ -233,7 +256,23 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
                       {r.checkInDate} → {resolveEffectiveCheckOutDate(r)}
                     </td>
                     <td className="px-4 py-2">
-                      <ReservationStatusBadge status={r.status} />
+                      <div className="flex flex-col gap-1">
+                        <ReservationStatusBadge status={r.status} />
+                        {departure &&
+                        (departure.classification === "expected_departure" ||
+                          departure.classification === "late_checkout" ||
+                          departure.classification === "overstay" ||
+                          departure.classification === "in_house") ? (
+                          <DepartureClassificationBadge
+                            classification={departure.classification}
+                            label={
+                              departure.classification === "in_house"
+                                ? "Current Stay"
+                                : departure.shortLabel
+                            }
+                          />
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-right">
                       <Button variant="ghost" size="sm" asChild>
@@ -241,7 +280,8 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
                       </Button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -251,17 +291,44 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
       {tab === "guests" && (
         <div className="mt-6">
           <div className="grid gap-3">
-            {overview.reservations.map((r) => (
+            {overview.reservations.map((r) => {
+              const departure =
+                r.status === "checked_in"
+                  ? resolveDepartureClassification({
+                      status: r.status,
+                      checkInDate: r.checkInDate,
+                      scheduledCheckOutDate: r.checkOutDate,
+                      businessDate,
+                      policyCheckOutTime: checkoutPolicy.checkOutTime,
+                    })
+                  : null;
+              return (
               <Card key={r.id}>
                 <CardContent className="space-y-4 py-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="font-medium">{r.guestName}</p>
                       <p className="text-sm text-muted-foreground">
                         Room {r.roomNumber || "unassigned"} · {r.adults} adults · {r.children} children
                       </p>
                     </div>
-                    <ReservationStatusBadge status={r.status} />
+                    <div className="flex flex-col items-end gap-1">
+                      <ReservationStatusBadge status={r.status} />
+                      {departure &&
+                      (departure.classification === "expected_departure" ||
+                        departure.classification === "late_checkout" ||
+                        departure.classification === "overstay" ||
+                        departure.classification === "in_house") ? (
+                        <DepartureClassificationBadge
+                          classification={departure.classification}
+                          label={
+                            departure.classification === "in_house"
+                              ? "Current Stay"
+                              : departure.shortLabel
+                          }
+                        />
+                      ) : null}
+                    </div>
                   </div>
                   <PricingCard
                     rackRate={r.rackRate}
@@ -279,7 +346,8 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
                   />
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

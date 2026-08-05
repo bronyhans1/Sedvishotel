@@ -2,6 +2,7 @@ import { getCheckInAccess } from "@/lib/auth/check-in-access";
 import { getCheckOutAccess } from "@/lib/auth/check-out-access";
 import { getPaymentAccess } from "@/lib/auth/payment-access";
 import { getReservationAccess } from "@/lib/auth/reservation-access";
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import { getTodayDateString } from "@/lib/dates/today";
 import { combineDateAndTime, getCurrentTimeString } from "@/lib/dates/time";
 import { roundCurrency, computeOutstandingBalance } from "@/lib/payments/currency";
@@ -1486,10 +1487,11 @@ export class ReservationService implements IReservationService {
   async listPendingCheckIns(
     _ctx: ServiceContext,
     session: AuthSession,
-    asOfDate: string = getTodayDateString()
+    asOfDate?: string
   ): Promise<Reservation[]> {
     this.requireOperationalView(session, ["check_in"]);
-    const rows = await this.reservations.findPendingCheckIns(asOfDate);
+    const date = asOfDate ?? (await getCurrentBusinessDate());
+    const rows = await this.reservations.findPendingCheckIns(date);
     return rows.map(mapDbReservationToReservation);
   }
 
@@ -1505,28 +1507,29 @@ export class ReservationService implements IReservationService {
   async getCheckInPageStats(
     ctx: ServiceContext,
     session: AuthSession,
-    asOfDate: string = getTodayDateString()
+    asOfDate?: string
   ): Promise<CheckInPageStats> {
     this.requireOperationalView(session, ["check_in"]);
+    const date = asOfDate ?? (await getCurrentBusinessDate());
     const all = await this.reservations.getAll();
     const reservations = all.map(mapDbReservationToReservation);
-    const pending = await this.listPendingCheckIns(ctx, session, asOfDate);
+    const pending = await this.listPendingCheckIns(ctx, session, date);
 
     return {
       todayArrivals: reservations.filter(
         (r) =>
-          r.checkInDate === asOfDate &&
+          r.checkInDate === date &&
           r.status !== "cancelled" &&
           r.status !== "no_show"
       ).length,
       pendingCheckIns: pending.length,
       completedCheckInsToday: reservations.filter(
-        (r) => r.checkInDate === asOfDate && r.status === "checked_in"
+        (r) => r.checkInDate === date && r.status === "checked_in"
       ).length,
       walkInsToday: reservations.filter(
         (r) =>
           r.bookingSource === "walk_in" &&
-          r.checkInDate === asOfDate &&
+          r.checkInDate === date &&
           r.status === "checked_in"
       ).length,
     };
@@ -1535,14 +1538,15 @@ export class ReservationService implements IReservationService {
   async getCheckOutPageStats(
     _ctx: ServiceContext,
     session: AuthSession,
-    asOfDate: string = getTodayDateString()
+    asOfDate?: string
   ): Promise<CheckOutPageStats> {
     void _ctx;
     this.requireOperationalView(session, ["check_out"]);
+    const date = asOfDate ?? (await getCurrentBusinessDate());
     const all = await this.reservations.getAll();
     const reservations = all.map(mapDbReservationToReservation);
     const checkedIn = reservations.filter((r) => r.status === "checked_in");
-    const departuresToday = checkedIn.filter((r) => r.checkOutDate === asOfDate);
+    const departuresToday = checkedIn.filter((r) => r.checkOutDate === date);
 
     const rooms = await this.rooms.getAll(false);
     const roomsAwaitingCleaning = rooms.filter(
@@ -1555,7 +1559,7 @@ export class ReservationService implements IReservationService {
       completedCheckOutsToday: reservations.filter(
         (r) =>
           (r.status === "checked_out" || r.status === "checked_out_early") &&
-          resolveEffectiveCheckOutDate(r) === asOfDate
+          resolveEffectiveCheckOutDate(r) === date
       ).length,
       roomsAwaitingCleaning,
     };
@@ -1622,10 +1626,11 @@ export class ReservationService implements IReservationService {
   async getStayPageStats(
     _ctx: ServiceContext,
     session: AuthSession,
-    asOfDate: string = getTodayDateString()
+    asOfDate?: string
   ): Promise<StayStats> {
     void _ctx;
     this.requireOperationalView(session, ["active_stays"]);
+    const date = asOfDate ?? (await getCurrentBusinessDate());
     // Use repository reads directly so active_stays.view does not need
     // listReservations() → reservations.view (management browse).
     const checkedInRows = await this.reservations.findCheckedIn();
@@ -1633,7 +1638,7 @@ export class ReservationService implements IReservationService {
     const reservations = (await this.reservations.getAll()).map(
       mapDbReservationToReservation
     );
-    return computeStayStats(stays, reservations, asOfDate);
+    return computeStayStats(stays, reservations, date);
   }
 
   async completeCheckOutWithSettlement(
@@ -2243,7 +2248,7 @@ export class ReservationService implements IReservationService {
     }
 
     const row = await this.resolveRow(reservationId);
-    const asOfDate = getTodayDateString();
+    const asOfDate = await getCurrentBusinessDate();
 
     if (row.status !== "checked_in") {
       throw new ServiceError(
@@ -2320,7 +2325,7 @@ export class ReservationService implements IReservationService {
     }
 
     const actualCheckoutTime = input.actualCheckoutTime.trim() || getCurrentTimeString();
-    const asOfDate = getTodayDateString();
+    const asOfDate = await getCurrentBusinessDate();
     const row = await this.resolveRow(reservationId);
 
     if (row.status !== "checked_in") {

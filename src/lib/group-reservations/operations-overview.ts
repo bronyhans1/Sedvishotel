@@ -1,3 +1,4 @@
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import { mapDbReservationBlockToReservationBlock } from "@/lib/group-reservations/block-mapper";
 import { mapDbGroupReservationToGroupReservation } from "@/lib/group-reservations/mapper";
 import { mapDbReservationToReservation } from "@/lib/reservations/mapper";
@@ -46,10 +47,6 @@ export type GroupOperationsOverview = {
   reservations: Reservation[];
 };
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export async function buildGroupOperationsOverview(
   deps: {
     groups: IGroupReservationRepository;
@@ -60,9 +57,10 @@ export async function buildGroupOperationsOverview(
   groupId: string,
   summary: GroupReservationSummary,
   financial: GroupFinancialSummary | null,
-  timelineEvents: GroupTimelineEvent[]
+  timelineEvents: GroupTimelineEvent[],
+  businessDate?: string
 ): Promise<GroupOperationsOverview> {
-  const today = todayIso();
+  const today = businessDate ?? (await getCurrentBusinessDate());
   const groupRow = await deps.groups.getById(groupId);
   const group = groupRow
     ? mapDbGroupReservationToGroupReservation(groupRow)

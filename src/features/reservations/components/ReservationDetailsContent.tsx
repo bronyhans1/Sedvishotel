@@ -29,6 +29,7 @@ import { MoveRoomModal } from "@/components/stays/MoveRoomModal";
 import { EditReservationModal } from "@/components/reservations/EditReservationModal";
 import { PricingCard } from "@/components/pricing/PricingCard";
 import { BookingInformationCard } from "@/components/reservations/BookingInformationCard";
+import { DepartureClassificationBadge } from "@/components/reservations/DepartureClassificationBadge";
 import { ReservationStatusBadge } from "@/components/reservations/ReservationStatusBadge";
 import { ReservationTimeline } from "@/components/reservations/ReservationTimeline";
 import type { ReservationRoomTypeOption } from "@/features/reservations/load-reservations-page";
@@ -37,10 +38,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import type { ReservationAccess } from "@/lib/auth/reservation-access.types";
 import type { CheckOutAccess } from "@/lib/auth/check-out-access.types";
-import { getTodayDateString } from "@/lib/dates/today";
 import { getCurrentTimeString } from "@/lib/dates/time";
-import { canEarlyCheckOut } from "@/lib/reservations/early-checkout";
-import { canLateCheckOut, isLateCheckoutReservation } from "@/lib/reservations/late-checkout";
+import { resolveDepartureClassification } from "@/lib/reservations/departure-classification";
+import { isLateCheckoutReservation } from "@/lib/reservations/late-checkout";
 import { canMoveRoom } from "@/lib/reservations/room-move";
 import { buildReservationTimeline } from "@/lib/reservations/mapper";
 import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
@@ -85,6 +85,7 @@ type Props = {
   checkoutPolicy: CheckoutPolicy;
   roomTypeOptions: ReservationRoomTypeOption[];
   finance: ReservationFinanceContext;
+  businessDate: string;
 };
 
 function formatLateCheckoutTime(iso: string | null): string {
@@ -105,6 +106,7 @@ export function ReservationDetailsContent({
   checkoutPolicy,
   roomTypeOptions,
   finance,
+  businessDate,
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -115,25 +117,19 @@ export function ReservationDetailsContent({
   const [moveRoomOpen, setMoveRoomOpen] = useState(false);
   const timeline = buildReservationTimeline(reservation);
 
-  const today = getTodayDateString();
   const currentTime = getCurrentTimeString();
+  const departure = resolveDepartureClassification({
+    status: reservation.status,
+    checkInDate: reservation.checkInDate,
+    scheduledCheckOutDate: reservation.checkOutDate,
+    businessDate,
+    currentTime,
+    policyCheckOutTime: checkoutPolicy.checkOutTime,
+  });
   const showEarlyCheckOut =
-    checkoutAccess.canProcess &&
-    canEarlyCheckOut(
-      reservation.status,
-      reservation.checkInDate,
-      reservation.checkOutDate,
-      today
-    );
+    checkoutAccess.canProcess && departure.primaryAction === "early_check_out";
   const showLateCheckOut =
-    checkoutAccess.canProcess &&
-    canLateCheckOut(
-      reservation.status,
-      reservation.checkOutDate,
-      today,
-      currentTime,
-      checkoutPolicy.checkOutTime
-    );
+    checkoutAccess.canProcess && departure.primaryAction === "late_check_out";
   const showStayOperations =
     checkoutAccess.canProcess && canMoveRoom(reservation.status);
 
@@ -167,6 +163,14 @@ export function ReservationDetailsContent({
         </div>
         <div className="flex flex-wrap gap-2">
           <ReservationStatusBadge status={reservation.status} />
+          <DepartureClassificationBadge
+            classification={departure.classification}
+            label={
+              departure.classification === "overstay" && departure.overstayDays > 0
+                ? `Overstay · ${departure.overstayDays}d`
+                : undefined
+            }
+          />
           {showEarlyCheckOut ? (
             <Button size="sm" variant="outline" onClick={() => setEarlyCheckOutOpen(true)}>
               <LogOut className="h-4 w-4" />

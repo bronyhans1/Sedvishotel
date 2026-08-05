@@ -244,6 +244,14 @@ export function ShiftHandoverPageContent({
             <p>
               <span className="text-muted-foreground">Opened At: </span>
               <span className="font-medium">{formatHandoverTimestamp(currentShift.openedAt)}</span>
+              {currentShift.businessDate ? (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Business Date:{" "}
+                  <span className="font-medium text-foreground">
+                    {currentShift.businessDate}
+                  </span>
+                </p>
+              ) : null}
             </p>
             <p>
               <span className="text-muted-foreground">Opening Cash: </span>

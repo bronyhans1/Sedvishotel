@@ -77,6 +77,10 @@ export const MIGRATION_ORDER = [
   "071_group_permission_module.sql",
   "072_group_permissions.sql",
   "073_rate_management.sql",
+  "074_night_audit_lifecycle.sql",
+  "075_hotel_operating_day.sql",
+  "076_overstay_engine.sql",
+  "077_operational_integrity.sql",
 ] as const;
 
 export const SEED_ORDER = [

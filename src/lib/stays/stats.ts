@@ -1,11 +1,10 @@
-import { getTodayDateString } from "@/lib/dates/today";
 import type { Reservation } from "@/types/reservation";
 import type { ActiveStay, StayStats } from "@/types/stay";
 
 export function computeStayStats(
   stays: ActiveStay[],
   reservations: Reservation[],
-  today: string = getTodayDateString()
+  today: string
 ): StayStats {
   const occupiedRooms = new Set(stays.map((s) => s.roomNumber)).size;
   return {

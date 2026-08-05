@@ -42,6 +42,21 @@ export interface Database {
       notifications: { Row: import("@/types/database/tables").DbNotification };
       activity_logs: { Row: import("@/types/database/tables").DbActivityLog };
       night_audits: { Row: import("@/types/database/tables").DbNightAudit };
+      night_audit_revisions: {
+        Row: import("@/types/database/tables").DbNightAuditRevision;
+      };
+      hotel_operating_day: {
+        Row: import("@/types/database/tables").DbHotelOperatingDay;
+      };
+      overstay_charges: {
+        Row: import("@/types/database/tables").DbOverstayCharge;
+      };
+      correction_sessions: {
+        Row: import("@/types/database/tables").DbCorrectionSession;
+      };
+      business_day_lock_audits: {
+        Row: import("@/types/database/tables").DbBusinessDayLockAudit;
+      };
       shift_handovers: { Row: import("@/types/database/tables").DbShiftHandover };
       shift_handover_tasks: { Row: import("@/types/database/tables").DbShiftHandoverTask };
       shift_handover_issues: { Row: import("@/types/database/tables").DbShiftHandoverIssue };

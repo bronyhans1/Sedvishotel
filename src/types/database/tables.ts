@@ -581,9 +581,48 @@ export interface DbNightAudit {
   reopened_at: Timestamp | null;
   reopened_by: string | null;
   reopen_reason: string | null;
+  revision_number: number;
   shift_handover_id: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
+}
+
+export type DbNightAuditRevisionEventType = "closed" | "reopened" | "reclosed";
+
+export interface DbNightAuditRevision {
+  id: string;
+  night_audit_id: string;
+  revision_number: number;
+  event_type: DbNightAuditRevisionEventType;
+  closed_by: string | null;
+  closed_at: Timestamp | null;
+  reopened_by: string | null;
+  reopened_at: Timestamp | null;
+  reopen_reason: string | null;
+  rooms_occupied: number | null;
+  rooms_available: number | null;
+  rooms_cleaning: number | null;
+  rooms_maintenance: number | null;
+  check_ins: number | null;
+  check_outs: number | null;
+  active_stays: number | null;
+  cash_total: number | null;
+  mobile_money_total: number | null;
+  card_total: number | null;
+  bank_transfer_total: number | null;
+  other_total: number | null;
+  gross_revenue: number | null;
+  refund_total: number | null;
+  net_revenue: number | null;
+  vat_collected: number | null;
+  vat_exempt_revenue: number | null;
+  vat_override_count: number | null;
+  cash_expected: number | null;
+  cash_counted: number | null;
+  cash_variance: number | null;
+  variance_notes: string | null;
+  notes: string | null;
+  created_at: Timestamp;
 }
 
 export interface DbShiftHandover {
@@ -596,6 +635,7 @@ export interface DbShiftHandover {
   opened_at: Timestamp;
   closed_at: Timestamp | null;
   acknowledged_at: Timestamp | null;
+  business_date: DateString | null;
   cash_drawer_amount: number;
   closing_cash: number | null;
   notes: string | null;
@@ -637,6 +677,91 @@ export interface DbShiftHandoverIssue {
   updated_at: Timestamp;
 }
 
+export type DbHotelOperatingDayStatus = "open" | "closed";
+
+export interface DbHotelOperatingDay {
+  id: number;
+  current_business_date: DateString;
+  status: DbHotelOperatingDayStatus;
+  opened_at: Timestamp;
+  closed_at: Timestamp | null;
+  opened_by: string | null;
+  advanced_by: string | null;
+  night_audit_id: string | null;
+  notes: string | null;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export type DbOverstayChargeStatus =
+  | "skipped"
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "waived"
+  | "posted";
+
+export interface DbOverstayCharge {
+  id: string;
+  reservation_id: string;
+  business_date: DateString;
+  room_number: string | null;
+  charge_mode: string;
+  status: DbOverstayChargeStatus;
+  amount: number;
+  currency: string;
+  night_rate: number;
+  overstay_days: number;
+  policy_snapshot: Record<string, unknown>;
+  folio_entry_id: string | null;
+  source_reference: string;
+  decision_notes: string | null;
+  created_by: string | null;
+  approved_by: string | null;
+  approved_at: Timestamp | null;
+  waived_by: string | null;
+  waived_at: Timestamp | null;
+  rejected_by: string | null;
+  rejected_at: Timestamp | null;
+  posted_at: Timestamp | null;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export type DbCorrectionSessionStatus = "open" | "review" | "closed";
+
+export interface DbCorrectionSession {
+  id: string;
+  session_number: string;
+  business_date: DateString;
+  night_audit_id: string | null;
+  status: DbCorrectionSessionStatus;
+  reason: string;
+  opened_by: string | null;
+  opened_at: Timestamp;
+  closed_by: string | null;
+  closed_at: Timestamp | null;
+  corrections_count: number;
+  financial_impact: number;
+  review_notes: string | null;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export interface DbBusinessDayLockAudit {
+  id: string;
+  business_date: DateString;
+  operation: string;
+  module: string;
+  reason: string;
+  user_id: string | null;
+  user_name: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: Timestamp;
+}
+
 export interface DbHotelSettings {
   id: string;
   hotel_name: string;
@@ -655,6 +780,15 @@ export interface DbHotelSettings {
   late_checkout_hour_fee_1_2: number;
   late_checkout_hour_fee_2_4: number;
   late_checkout_hour_fee_4_6: number;
+  overstay_charge_mode: string;
+  overstay_manager_approval_required: boolean;
+  overstay_allow_manual_waiver: boolean;
+  overstay_auto_create_pending_charge: boolean;
+  overstay_night_audit_mode: string;
+  lock_block_inventory_adjustments: boolean;
+  lock_block_manual_payments: boolean;
+  business_day_open_warning_hour: number;
+  correction_session_max_hours: number;
   logo_url: string | null;
   tin_number: string | null;
   description: string | null;

@@ -20,7 +20,7 @@ export async function loadHousekeepingPageData() {
   }
 
   const service = await getHousekeepingService();
-  const { tasks, stats } = await service.listTasks(ctx, session);
+  const { tasks, stats, departureWatch } = await service.listTasks(ctx, session);
 
-  return { tasks, stats, access };
+  return { tasks, stats, access, departureWatch };
 }

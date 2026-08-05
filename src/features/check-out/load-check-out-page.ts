@@ -5,7 +5,7 @@ import { ACCESS_DENIED_PATH } from "@/lib/auth/route-guard";
 import { getPaymentAccess } from "@/lib/auth/payment-access";
 import { getCheckOutAccess } from "@/lib/auth/check-out-access";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
-import { getTodayDateString } from "@/lib/dates/today";
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import { getGuestFolioService } from "@/lib/folio/get-guest-folio-service";
 import type { AuthoritativeSettlement } from "@/lib/folio/authoritative-settlement";
 import { getReservationService } from "@/lib/reservations/get-reservation-service";
@@ -31,15 +31,36 @@ export async function loadCheckOutPageData() {
   const paymentAccess = getPaymentAccess(session);
   const defaultTaxRate = await getDefaultTaxRate();
 
-  const today = getTodayDateString();
+  const today = await getCurrentBusinessDate();
   const service = await getReservationService();
   const folioService = await getGuestFolioService();
+  const { getOverstayService } = await import(
+    "@/lib/overstay/get-overstay-service"
+  );
+  const overstayService = await getOverstayService();
 
-  const [checkedInReservations, stats, checkoutPolicy] = await Promise.all([
-    service.listCheckedInReservations(ctx, session),
-    service.getCheckOutPageStats(ctx, session, today),
-    loadCheckoutPolicy(),
-  ]);
+  const [checkedInReservations, stats, checkoutPolicy, allOverstayCharges] =
+    await Promise.all([
+      service.listCheckedInReservations(ctx, session),
+      service.getCheckOutPageStats(ctx, session, today),
+      loadCheckoutPolicy(),
+      overstayService.listAllCharges(),
+    ]);
+
+  const overstayByReservation: Record<
+    string,
+    import("@/types/overstay").OverstayCharge
+  > = {};
+  for (const charge of allOverstayCharges) {
+    const existing = overstayByReservation[charge.reservationId];
+    if (
+      !existing ||
+      charge.businessDate >= existing.businessDate ||
+      charge.createdAt > existing.createdAt
+    ) {
+      overstayByReservation[charge.reservationId] = charge;
+    }
+  }
 
   const folioBalances: Record<string, number> = {};
   const folioSettlements: Record<string, AuthoritativeSettlement> = {};
@@ -73,5 +94,6 @@ export async function loadCheckOutPageData() {
     canRecordPayment: paymentAccess.canRecord,
     folioBalances,
     folioSettlements,
+    overstayByReservation,
   };
 }

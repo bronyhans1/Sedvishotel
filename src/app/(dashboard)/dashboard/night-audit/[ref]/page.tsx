@@ -20,8 +20,17 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 // "ref" is a reserved React prop; the route param must be renamed before
 // being passed as a prop, or React treats it as a ref in a Server Component.
 async function NightAuditDetailLoader({ auditRef }: { auditRef: string }) {
-  const { audit, access } = await loadNightAuditDetailData(auditRef);
-  return <NightAuditDetailContent audit={audit} access={access} />;
+  const { audit, access, liveSnapshot, revisions, isToday } =
+    await loadNightAuditDetailData(auditRef);
+  return (
+    <NightAuditDetailContent
+      audit={audit}
+      access={access}
+      liveSnapshot={liveSnapshot}
+      revisions={revisions}
+      isToday={isToday}
+    />
+  );
 }
 
 export default async function NightAuditDetailPage({ params }: PageProps) {

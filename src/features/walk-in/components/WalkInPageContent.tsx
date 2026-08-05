@@ -21,7 +21,6 @@ import {
 import { useLiveRefresh } from "@/hooks/use-live-refresh";
 import { useToast } from "@/hooks/use-toast";
 import type { WalkInAccess } from "@/lib/auth/walk-in-access.types";
-import { getTodayDateString } from "@/lib/dates/today";
 import { buildWalkInPaymentSettlement } from "@/lib/walk-in/pricing";
 import { roundCurrency } from "@/lib/payments/currency";
 import { BookingPaymentLifecycleBadge } from "@/components/payments/BookingPaymentLifecycleBadge";
@@ -62,44 +61,45 @@ type FormState = WalkInFormValues & {
   paymentNotes: string;
 };
 
-const today = getTodayDateString();
-
-const initial: FormState = {
-  fullName: "",
-  phone: "",
-  email: "",
-  nationality: "Ghanaian",
-  idType: "national_id",
-  idNumber: "",
-  address: "",
-  occupation: "",
-  emergencyContact: "",
-  emergencyPhone: "",
-  guestNotes: "",
-  roomNumber: "",
-  checkInDate: today,
-  checkOutDate: "",
-  adults: 1,
-  children: 0,
-  purpose: "",
-  specialRequests: "",
-  discount: 0,
-  guestsCount: 1,
-  paymentMethod: "cash",
-  paymentPolicy: "collect_now",
-  amountPaid: 0,
-  paymentNotes: "",
-  vatApplied: true,
-  vatExemptionReason: "",
-  vatExemptionNotes: "",
-  pricingMode: "standard",
-};
+function buildInitialForm(businessDate: string): FormState {
+  return {
+    fullName: "",
+    phone: "",
+    email: "",
+    nationality: "Ghanaian",
+    idType: "national_id",
+    idNumber: "",
+    address: "",
+    occupation: "",
+    emergencyContact: "",
+    emergencyPhone: "",
+    guestNotes: "",
+    roomNumber: "",
+    checkInDate: businessDate,
+    checkOutDate: "",
+    adults: 1,
+    children: 0,
+    purpose: "",
+    specialRequests: "",
+    discount: 0,
+    guestsCount: 1,
+    paymentMethod: "cash",
+    paymentPolicy: "collect_now",
+    amountPaid: 0,
+    paymentNotes: "",
+    vatApplied: true,
+    vatExemptionReason: "",
+    vatExemptionNotes: "",
+    pricingMode: "standard",
+  };
+}
 
 type WalkInPageContentProps = {
   access: WalkInAccess;
   defaultTaxRate: number;
   defaultVatApplied: boolean;
   canOverrideVat: boolean;
+  businessDate: string;
   roomTypes: Array<{
     name: string;
     defaultPrice: number;
@@ -155,12 +155,13 @@ export function WalkInPageContent({
   defaultTaxRate,
   defaultVatApplied,
   canOverrideVat,
+  businessDate,
   roomTypes,
 }: WalkInPageContentProps) {
   const toast = useToast();
   const refresh = useLiveRefresh();
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState(initial);
+  const [form, setForm] = useState(() => buildInitialForm(businessDate));
   const [availableRooms, setAvailableRooms] = useState<WalkInRoomOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{
@@ -418,7 +419,7 @@ export function WalkInPageContent({
                 onClick={() => {
                   setSuccess(null);
                   setStep(1);
-                  setForm(initial);
+                  setForm(buildInitialForm(businessDate));
                 }}
               >
                 New walk-in

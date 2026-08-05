@@ -1,6 +1,6 @@
 import type { INightAuditRepository } from "@/repositories/night-audit.repository";
 import type { SupabaseServerClient } from "@/lib/supabase/server";
-import type { DbNightAudit } from "@/types/database";
+import type { DbNightAudit, DbNightAuditRevision } from "@/types/database";
 
 export class SupabaseNightAuditRepository implements INightAuditRepository {
   constructor(private readonly client: SupabaseServerClient) {}
@@ -42,6 +42,20 @@ export class SupabaseNightAuditRepository implements INightAuditRepository {
 
     if (error) {
       throw new Error(`Failed to load night audit: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  async findOpen(): Promise<DbNightAudit | null> {
+    const { data, error } = await this.client
+      .from("night_audits")
+      .select("*")
+      .eq("status", "open")
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to load open night audit: ${error.message}`);
     }
 
     return data;
@@ -106,6 +120,38 @@ export class SupabaseNightAuditRepository implements INightAuditRepository {
 
     if (error || !row) {
       throw new Error(`Failed to update night audit: ${error?.message ?? "unknown"}`);
+    }
+
+    return row;
+  }
+
+  async listRevisions(nightAuditId: string): Promise<DbNightAuditRevision[]> {
+    const { data, error } = await this.client
+      .from("night_audit_revisions")
+      .select("*")
+      .eq("night_audit_id", nightAuditId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw new Error(`Failed to list night audit revisions: ${error.message}`);
+    }
+
+    return data ?? [];
+  }
+
+  async createRevision(
+    data: Omit<DbNightAuditRevision, "id" | "created_at">
+  ): Promise<DbNightAuditRevision> {
+    const { data: row, error } = await this.client
+      .from("night_audit_revisions")
+      .insert(data)
+      .select("*")
+      .single();
+
+    if (error || !row) {
+      throw new Error(
+        `Failed to create night audit revision: ${error?.message ?? "unknown"}`
+      );
     }
 
     return row;

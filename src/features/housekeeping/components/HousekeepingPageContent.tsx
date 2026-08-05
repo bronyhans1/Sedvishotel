@@ -6,8 +6,10 @@ import { HousekeepingEmptyState } from "@/components/housekeeping/HousekeepingEm
 import { HousekeepingRoomCard } from "@/components/housekeeping/HousekeepingRoomCard";
 import { HousekeepingTaskPanel } from "@/components/housekeeping/HousekeepingTaskPanel";
 import { HotelWorkflowDiagram } from "@/components/housekeeping/HotelWorkflowDiagram";
+import { DepartureClassificationBadge } from "@/components/reservations/DepartureClassificationBadge";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { StatCard } from "@/components/shared/StatCard";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { HousekeepingAccess } from "@/lib/auth/housekeeping-access.types";
 import { siteConfig } from "@/config/site";
 import type { HousekeepingTask, HousekeepingStats, CleaningStatus } from "@/types/housekeeping";
@@ -41,12 +43,14 @@ type HousekeepingPageContentProps = {
   tasks: HousekeepingTask[];
   stats: HousekeepingStats;
   access: HousekeepingAccess;
+  departureWatch: HousekeepingTask[];
 };
 
 export function HousekeepingPageContent({
   tasks,
   stats,
   access,
+  departureWatch,
 }: HousekeepingPageContentProps) {
   const [selected, setSelected] = useState<HousekeepingTask | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -96,6 +100,35 @@ export function HousekeepingPageContent({
       </div>
 
       <HotelWorkflowDiagram />
+
+      {departureWatch.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Awaiting Checkout</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {departureWatch.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-lg border p-3 text-sm shadow-sm"
+              >
+                <p className="font-mono text-lg font-bold">{item.roomNumber}</p>
+                <p className="text-xs text-muted-foreground">{item.lastGuest}</p>
+                <div className="mt-2">
+                  {item.departureClassification ? (
+                    <DepartureClassificationBadge
+                      classification={item.departureClassification}
+                    />
+                  ) : null}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {item.departureLabel}
+                </p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {tasks.length === 0 ? (
         <HousekeepingEmptyState />

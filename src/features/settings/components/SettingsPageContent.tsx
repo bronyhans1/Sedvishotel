@@ -51,10 +51,14 @@ export function SettingsPageContent({
   settings: initialSettings,
   access,
   isAdmin,
+  operatingDay = null,
+  calendarDate,
 }: {
   settings: HotelSettings;
   access: SettingsAccess;
   isAdmin: boolean;
+  operatingDay?: import("@/types/business-date").HotelOperatingDay | null;
+  calendarDate?: string;
 }) {
   const toast = useToast();
   const { setTheme } = useTheme();
@@ -146,6 +150,41 @@ export function SettingsPageContent({
         >
           {error}
         </p>
+      ) : null}
+
+      {isAdmin && operatingDay ? (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Business Date</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 text-sm sm:grid-cols-2">
+            <p>
+              <span className="text-muted-foreground">Business Date: </span>
+              <span className="font-semibold">{operatingDay.currentBusinessDate}</span>
+            </p>
+            <p>
+              <span className="text-muted-foreground">Status: </span>
+              <span className="font-semibold uppercase">{operatingDay.status}</span>
+            </p>
+            {calendarDate ? (
+              <p>
+                <span className="text-muted-foreground">Calendar Date: </span>
+                <span className="font-medium">{calendarDate}</span>
+              </p>
+            ) : null}
+            <p>
+              <span className="text-muted-foreground">Opened At: </span>
+              <span className="font-medium">
+                {new Date(operatingDay.openedAt).toLocaleString()}
+              </span>
+            </p>
+            <p className="sm:col-span-2 text-muted-foreground">
+              Advanced by Night Audit when the current business day is closed.
+              Front desk, dashboard, and daily reports use this date — not the
+              Windows clock alone.
+            </p>
+          </CardContent>
+        </Card>
       ) : null}
       <fieldset disabled={readOnly || isPending} className="space-y-8">
         <Card>
@@ -381,6 +420,80 @@ export function SettingsPageContent({
                 </div>
               </>
             )}
+            <div className="space-y-2 sm:col-span-2 lg:col-span-3 border-t pt-4">
+              <Label>Overstay Policy</Label>
+              <p className="text-xs text-muted-foreground">
+                Applies when Business Date advances past the scheduled check-out. Does not replace Late Check-Out pricing.
+              </p>
+              <div className="mt-2 flex flex-col gap-2">
+                {(
+                  [
+                    ["none", "No Automatic Charge"],
+                    ["one_additional_night", "Charge One Additional Night"],
+                    ["every_additional_night", "Charge Every Additional Night"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <label key={value} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="overstayChargeMode"
+                      checked={settings.overstayChargeMode === value}
+                      onChange={() => set("overstayChargeMode", value)}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={settings.overstayManagerApprovalRequired}
+                    onChange={(e) =>
+                      set("overstayManagerApprovalRequired", e.target.checked)
+                    }
+                  />
+                  Manager Approval Required
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={settings.overstayAllowManualWaiver}
+                    onChange={(e) =>
+                      set("overstayAllowManualWaiver", e.target.checked)
+                    }
+                  />
+                  Allow Manual Waiver
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={settings.overstayAutoCreatePendingCharge}
+                    onChange={(e) =>
+                      set("overstayAutoCreatePendingCharge", e.target.checked)
+                    }
+                  />
+                  Auto-create Pending Charge (when approval required)
+                </label>
+                <div className="space-y-1">
+                  <Label className="text-xs">Night Audit Overstay Handling</Label>
+                  <select
+                    className={selectClass}
+                    value={settings.overstayNightAuditMode}
+                    onChange={(e) =>
+                      set(
+                        "overstayNightAuditMode",
+                        e.target.value as typeof settings.overstayNightAuditMode
+                      )
+                    }
+                  >
+                    <option value="continue">Continue (warn only)</option>
+                    <option value="acknowledge">Require Acknowledgement</option>
+                    <option value="require_manager">Require Manager</option>
+                  </select>
+                </div>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label>Currency Symbol</Label>
               <Input value={settings.currencySymbol} onChange={(e) => set("currencySymbol", e.target.value)} />

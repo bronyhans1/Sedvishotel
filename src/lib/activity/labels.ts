@@ -37,6 +37,20 @@ const ACTION_LABEL_OVERRIDES: Record<string, string> = {
   [ActivityActionCodes.RESERVATION_CHECKED_OUT]: "Guest checked out",
   [ActivityActionCodes.RESERVATION_EARLY_CHECKOUT]: "Early check-out processed",
   [ActivityActionCodes.RESERVATION_LATE_CHECKOUT]: "Late check-out processed",
+  [ActivityActionCodes.RESERVATION_OVERSTAY_CHARGE_CREATED]:
+    "Overstay charge created",
+  [ActivityActionCodes.RESERVATION_OVERSTAY_CHARGE_POSTED]:
+    "Overstay charge posted to folio",
+  [ActivityActionCodes.RESERVATION_OVERSTAY_APPROVED]: "Overstay charge approved",
+  [ActivityActionCodes.RESERVATION_OVERSTAY_REJECTED]: "Overstay charge rejected",
+  [ActivityActionCodes.RESERVATION_OVERSTAY_WAIVED]: "Overstay charge waived",
+  [ActivityActionCodes.RESERVATION_OVERSTAY_EVALUATED]:
+    "Overstay evaluation completed",
+  [ActivityActionCodes.BUSINESS_DAY_LOCK_DENIED]:
+    "Business day lock denied operation",
+  [ActivityActionCodes.CORRECTION_SESSION_OPENED]: "Correction session opened",
+  [ActivityActionCodes.CORRECTION_SESSION_CLOSED]: "Correction session closed",
+  [ActivityActionCodes.CORRECTION_SESSION_REVIEW]: "Correction session in review",
   [ActivityActionCodes.RESERVATION_EXTEND_STAY]: "Stay extended",
   [ActivityActionCodes.RESERVATION_ROOM_MOVE]: "Room move completed",
   [ActivityActionCodes.PAYMENT_RECORDED]: "Payment recorded",

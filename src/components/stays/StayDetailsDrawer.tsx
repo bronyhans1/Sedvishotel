@@ -10,10 +10,8 @@ import { ExtendStayModal } from "@/components/stays/ExtendStayModal";
 import { MoveRoomModal } from "@/components/stays/MoveRoomModal";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
-import { getTodayDateString } from "@/lib/dates/today";
 import { getCurrentTimeString } from "@/lib/dates/time";
-import { canEarlyCheckOut } from "@/lib/reservations/early-checkout";
-import { canLateCheckOut } from "@/lib/reservations/late-checkout";
+import { resolveDepartureClassification } from "@/lib/reservations/departure-classification";
 import { canMoveRoom } from "@/lib/reservations/room-move";
 import type { CheckOutAccess } from "@/lib/auth/check-out-access.types";
 import type { CheckoutPolicy } from "@/types/late-checkout";
@@ -26,6 +24,7 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { GuestStatusBadge } from "@/components/guests/GuestStatusBadge";
+import { DepartureClassificationBadge } from "@/components/reservations/DepartureClassificationBadge";
 import { ReservationStatusBadge } from "@/components/reservations/ReservationStatusBadge";
 
 type Props = {
@@ -34,6 +33,7 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   checkoutAccess?: CheckOutAccess;
   checkoutPolicy?: CheckoutPolicy;
+  businessDate: string;
   onEarlyCheckOutSuccess?: () => void;
 };
 
@@ -43,6 +43,7 @@ export function StayDetailsDrawer({
   onOpenChange,
   checkoutAccess,
   checkoutPolicy,
+  businessDate,
   onEarlyCheckOutSuccess,
 }: Props) {
   const [earlyCheckOutOpen, setEarlyCheckOutOpen] = useState(false);
@@ -52,21 +53,21 @@ export function StayDetailsDrawer({
 
   if (!stay) return null;
 
-  const today = getTodayDateString();
   const currentTime = getCurrentTimeString();
+  const departure = resolveDepartureClassification({
+    status: stay.status,
+    checkInDate: stay.checkInDate,
+    scheduledCheckOutDate: stay.expectedCheckOut,
+    businessDate,
+    currentTime,
+    policyCheckOutTime: checkoutPolicy?.checkOutTime ?? "11:00",
+  });
   const showEarlyCheckOut =
-    checkoutAccess?.canProcess &&
-    canEarlyCheckOut(stay.status, stay.checkInDate, stay.expectedCheckOut, today);
+    checkoutAccess?.canProcess && departure.primaryAction === "early_check_out";
   const showLateCheckOut =
     checkoutAccess?.canProcess &&
     checkoutPolicy &&
-    canLateCheckOut(
-      stay.status,
-      stay.expectedCheckOut,
-      today,
-      currentTime,
-      checkoutPolicy.checkOutTime
-    );
+    departure.primaryAction === "late_check_out";
   const showExtendStay =
     checkoutAccess?.canProcess &&
     canMoveRoom(stay.status);
@@ -100,9 +101,12 @@ export function StayDetailsDrawer({
           <section>
             <h3 className="font-semibold mb-2">Reservation</h3>
             <p className="font-mono text-xs">{stay.reservationNumber}</p>
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               <ReservationStatusBadge status={stay.status} />
               <GuestStatusBadge status={stay.guestStatus} />
+              <DepartureClassificationBadge
+                classification={departure.classification}
+              />
             </div>
             <Link
               href={`/dashboard/reservations/${stay.reservationId}`}

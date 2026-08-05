@@ -29,6 +29,7 @@ export function NightAuditHistoryTable({ audits }: NightAuditHistoryTableProps) 
               <th className="px-4 py-3 font-semibold">Audit Number</th>
               <th className="px-4 py-3 font-semibold">Date</th>
               <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="px-4 py-3 font-semibold">Rev</th>
               <th className="px-4 py-3 font-semibold">Net Revenue</th>
               <th className="px-4 py-3 font-semibold">Closed By</th>
               <th className="px-4 py-3 font-semibold">Closed At</th>
@@ -42,6 +43,9 @@ export function NightAuditHistoryTable({ audits }: NightAuditHistoryTableProps) 
                 <td className="px-4 py-3">{formatAuditDateLabel(audit.auditDate)}</td>
                 <td className="px-4 py-3">
                   <NightAuditStatusBadge status={audit.status} />
+                </td>
+                <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                  {audit.revisionNumber}
                 </td>
                 <td className="px-4 py-3 font-medium">{formatCurrency(audit.netRevenue)}</td>
                 <td className="px-4 py-3 text-muted-foreground">

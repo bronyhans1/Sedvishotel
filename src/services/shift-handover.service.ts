@@ -234,6 +234,10 @@ export class ShiftHandoverService implements IShiftHandoverService {
     ];
 
     const handoverNumber = await this.handovers.getNextHandoverNumber();
+    const { getCurrentBusinessDate } = await import(
+      "@/lib/dates/business-date"
+    );
+    const businessDate = await getCurrentBusinessDate();
     const row = await this.handovers.create({
       handover_number: handoverNumber,
       shift_type: input.shiftType,
@@ -242,6 +246,7 @@ export class ShiftHandoverService implements IShiftHandoverService {
       acknowledged_by: null,
       opened_at: new Date().toISOString(),
       closed_at: null,
+      business_date: businessDate,
       acknowledged_at: null,
       cash_drawer_amount: input.cashDrawerAmount,
       closing_cash: null,

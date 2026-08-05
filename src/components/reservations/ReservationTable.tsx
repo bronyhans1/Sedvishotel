@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { Eye, Pencil } from "lucide-react";
 
+import { DepartureClassificationBadge } from "@/components/reservations/DepartureClassificationBadge";
 import { ReservationStatusBadge } from "@/components/reservations/ReservationStatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatCurrency } from "@/lib/utils";
+import { resolveDepartureClassification } from "@/lib/reservations/departure-classification";
 import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
+import { formatCurrency } from "@/lib/utils";
 import { BOOKING_SOURCE_OPTIONS, type Reservation } from "@/types/reservation";
 
 const sourceLabels = Object.fromEntries(
@@ -16,9 +18,17 @@ type Props = {
   reservations: Reservation[];
   canEdit?: boolean;
   onEdit?: (r: Reservation) => void;
+  businessDate?: string;
+  policyCheckOutTime?: string;
 };
 
-export function ReservationTable({ reservations, canEdit, onEdit }: Props) {
+export function ReservationTable({
+  reservations,
+  canEdit,
+  onEdit,
+  businessDate,
+  policyCheckOutTime = "11:00",
+}: Props) {
   const showEdit = canEdit !== false && !!onEdit;
   return (
     <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
@@ -45,61 +55,89 @@ export function ReservationTable({ reservations, canEdit, onEdit }: Props) {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {reservations.map((r) => (
-              <tr key={r.id} className="hover:bg-muted/30">
-                <td className="px-4 py-3 font-mono text-xs font-medium">
-                  {r.reservationNumber}
-                </td>
-                <td className="px-4 py-3 font-medium">{r.guestName}</td>
-                <td className="px-4 py-3 font-mono">{r.roomNumber}</td>
-                <td className="hidden px-4 py-3 md:table-cell text-muted-foreground">
-                  {r.roomTypeName}
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap">{r.checkInDate}</td>
-                <td className="px-4 py-3 whitespace-nowrap">
-                  {resolveEffectiveCheckOutDate(r)}
-                </td>
-                <td className="px-4 py-3">
-                  <ReservationStatusBadge status={r.status} />
-                </td>
-                <td className="hidden px-4 py-3 lg:table-cell">
-                  {r.bookingSource === "website" ? (
-                    <Badge variant="secondary">Website</Badge>
-                  ) : (
-                    <span className="text-muted-foreground">
-                      {sourceLabels[r.bookingSource]}
-                    </span>
-                  )}
-                </td>
-                <td className="hidden px-4 py-3 sm:table-cell font-medium">
-                  {formatCurrency(r.totalAmount)}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex justify-end gap-1">
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link href={`/dashboard/reservations/${r.id}`}>
-                        <Eye className="h-4 w-4" />
-                        <span className="sr-only sm:not-sr-only sm:ml-1">
-                          View
-                        </span>
-                      </Link>
-                    </Button>
-                    {showEdit && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onEdit!(r)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                        <span className="sr-only sm:not-sr-only sm:ml-1">
-                          Edit
-                        </span>
-                      </Button>
+            {reservations.map((r) => {
+              const departure =
+                businessDate && r.status === "checked_in"
+                  ? resolveDepartureClassification({
+                      status: r.status,
+                      checkInDate: r.checkInDate,
+                      scheduledCheckOutDate: r.checkOutDate,
+                      businessDate,
+                      policyCheckOutTime,
+                    })
+                  : null;
+              return (
+                <tr key={r.id} className="hover:bg-muted/30">
+                  <td className="px-4 py-3 font-mono text-xs font-medium">
+                    {r.reservationNumber}
+                  </td>
+                  <td className="px-4 py-3 font-medium">{r.guestName}</td>
+                  <td className="px-4 py-3 font-mono">{r.roomNumber}</td>
+                  <td className="hidden px-4 py-3 md:table-cell text-muted-foreground">
+                    {r.roomTypeName}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">{r.checkInDate}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {resolveEffectiveCheckOutDate(r)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-1">
+                      <ReservationStatusBadge status={r.status} />
+                      {departure &&
+                      (departure.classification === "expected_departure" ||
+                        departure.classification === "late_checkout" ||
+                        departure.classification === "overstay" ||
+                        departure.classification === "in_house") ? (
+                        <DepartureClassificationBadge
+                          classification={departure.classification}
+                          label={
+                            departure.classification === "in_house"
+                              ? "Current Stay"
+                              : departure.shortLabel
+                          }
+                        />
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="hidden px-4 py-3 lg:table-cell">
+                    {r.bookingSource === "website" ? (
+                      <Badge variant="secondary">Website</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {sourceLabels[r.bookingSource]}
+                      </span>
                     )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="hidden px-4 py-3 sm:table-cell font-medium">
+                    {formatCurrency(r.totalAmount)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link href={`/dashboard/reservations/${r.id}`}>
+                          <Eye className="h-4 w-4" />
+                          <span className="sr-only sm:not-sr-only sm:ml-1">
+                            View
+                          </span>
+                        </Link>
+                      </Button>
+                      {showEdit && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onEdit!(r)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                          <span className="sr-only sm:not-sr-only sm:ml-1">
+                            Edit
+                          </span>
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

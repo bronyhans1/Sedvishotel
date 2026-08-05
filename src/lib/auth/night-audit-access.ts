@@ -5,6 +5,12 @@ import type { AuthSession } from "@/services/auth.service";
 export function getNightAuditAccess(session: AuthSession): NightAuditAccess {
   const canView = sessionHasPermission(session, "night_audit", "view");
   const canRunAudit = sessionHasPermission(session, "night_audit", "create");
-  const canReopen = session.roleId === "admin";
-  return { canView, canRunAudit, canReopen };
+  const isAdmin = session.roleId === "admin";
+  return {
+    canView,
+    canRunAudit,
+    canReopen: isAdmin,
+    canRecloseHistorical: isAdmin,
+    canViewRevisions: isAdmin,
+  };
 }

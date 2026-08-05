@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Eye, Pencil } from "lucide-react";
 
 import { GuestStatusBadge } from "@/components/guests/GuestStatusBadge";
+import { DepartureClassificationBadge } from "@/components/reservations/DepartureClassificationBadge";
 import { Button } from "@/components/ui/button";
 import type { Guest } from "@/types/guest";
 
@@ -26,6 +27,9 @@ export function GuestTable({ guests, canEdit, onEdit }: Props) {
               </th>
               <th className="px-4 py-3 font-semibold">Nationality</th>
               <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="hidden px-4 py-3 font-semibold lg:table-cell">
+                Stay
+              </th>
               <th className="hidden px-4 py-3 font-semibold sm:table-cell">
                 Total Visits
               </th>
@@ -46,6 +50,21 @@ export function GuestTable({ guests, canEdit, onEdit }: Props) {
                 <td className="px-4 py-3">{guest.nationality}</td>
                 <td className="px-4 py-3">
                   <GuestStatusBadge status={guest.guestStatus} />
+                </td>
+                <td className="hidden px-4 py-3 lg:table-cell">
+                  {guest.operationalStay ? (
+                    <div className="flex flex-col gap-1">
+                      <DepartureClassificationBadge
+                        classification={guest.operationalStay.classification}
+                        label={guest.operationalStay.label}
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        Room {guest.operationalStay.roomNumber}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </td>
                 <td className="hidden px-4 py-3 sm:table-cell">
                   {guest.totalVisits}
