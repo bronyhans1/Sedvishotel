@@ -33,6 +33,14 @@ export type BusinessDayHealthInput = {
   nightAuditPending: boolean;
   missingCashCount: boolean;
   lockDenialsToday?: number;
+  /** Governance: timing classification when NA still open */
+  closeClassification?:
+    | "too_early"
+    | "early"
+    | "on_time"
+    | "late"
+    | "overdue"
+    | null;
 };
 
 /** Pure derivation — no duplicate storage. */
@@ -70,6 +78,15 @@ export function deriveBusinessDayHealth(
   }
   if (input.nightAuditPending) {
     hit("Night Audit pending", 15, "attention");
+  }
+  if (input.closeClassification === "late") {
+    hit("Night Audit late", 12, "attention");
+  }
+  if (input.closeClassification === "overdue") {
+    hit("Night Audit overdue", 25, "action_required");
+  }
+  if (input.closeClassification === "too_early" && input.nightAuditPending) {
+    hit("Before Night Audit window", 5, "attention");
   }
   if (input.missingCashCount) {
     hit("Missing cash count", 15, "action_required");
@@ -115,6 +132,15 @@ export function deriveOperationalSmartWarnings(input: {
   pendingApprovals: number;
   outstandingOverstays: number;
   outstandingCheckOuts: number;
+  closeClassification?:
+    | "too_early"
+    | "early"
+    | "on_time"
+    | "late"
+    | "overdue"
+    | null;
+  recommendedClose?: string;
+  latestClose?: string;
 }): OperationalSmartWarning[] {
   const warnings: OperationalSmartWarning[] = [];
 
@@ -140,12 +166,49 @@ export function deriveOperationalSmartWarnings(input: {
   }
 
   if (input.nightAuditOpen) {
-    warnings.push({
-      id: "na-overdue",
-      severity: "medium",
-      message: "Night Audit is pending for the current Business Day.",
-      href: "/dashboard/night-audit",
-    });
+    if (input.closeClassification === "overdue") {
+      warnings.push({
+        id: "na-overdue",
+        severity: "critical",
+        message: `Night Audit is OVERDUE for Business Date ${input.businessDate}. Close when ready — the hotel is never blocked.`,
+        href: "/dashboard/night-audit",
+      });
+    } else if (input.closeClassification === "late") {
+      warnings.push({
+        id: "na-late",
+        severity: "critical",
+        message: `Night Audit is late (past ${input.latestClose ?? "latest close"}). Reason required when closing.`,
+        href: "/dashboard/night-audit",
+      });
+    } else if (input.closeClassification === "on_time") {
+      warnings.push({
+        id: "na-due",
+        severity: "medium",
+        message: `Night Audit is due (recommended ${input.recommendedClose ?? "now"}). Review the Operations Command Center.`,
+        href: "/dashboard/night-audit",
+      });
+    } else if (input.closeClassification === "early") {
+      warnings.push({
+        id: "na-early",
+        severity: "low",
+        message: `Inside the Night Audit window (before recommended ${input.recommendedClose ?? ""}). Soft advisory only.`,
+        href: "/dashboard/night-audit",
+      });
+    } else if (input.closeClassification === "too_early") {
+      warnings.push({
+        id: "na-too-early",
+        severity: "medium",
+        message: `Before earliest Night Audit close. Manager override required to close now.`,
+        href: "/dashboard/night-audit",
+      });
+    } else {
+      warnings.push({
+        id: "na-overdue",
+        severity: "medium",
+        message: "Night Audit is pending for the current Business Day.",
+        href: "/dashboard/night-audit",
+      });
+    }
   }
 
   if (input.pendingApprovals >= 2) {

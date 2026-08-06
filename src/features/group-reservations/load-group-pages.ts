@@ -56,6 +56,11 @@ export type GroupWizardOptions = {
     defaultPrice: number;
     pricingRules: import("@/types/pricing").RoomTypePricingRule[];
   }>;
+  defaultTaxRate: number;
+  defaultVatApplied: boolean;
+  serviceChargeRate: number;
+  requireRateOverrideApproval: boolean;
+  canOverrideVat: boolean;
 };
 
 export async function loadGroupWizardData(): Promise<GroupWizardOptions> {
@@ -83,7 +88,29 @@ export async function loadGroupWizardData(): Promise<GroupWizardOptions> {
       pricingRules: rt.pricingRules,
     }));
 
-  return { corporateAccounts, roomTypes };
+  const { getPaymentAccess } = await import("@/lib/auth/payment-access");
+  const {
+    getDefaultTaxRate,
+    isGlobalVatEnabled,
+  } = await import("@/lib/settings/get-tax-rate");
+  const { loadTaxAndChargeSettings } = await import(
+    "@/lib/settings/pricing-settings"
+  );
+  const paymentAccess = getPaymentAccess(session);
+  const [defaultTaxRate, taxSettings] = await Promise.all([
+    getDefaultTaxRate(),
+    loadTaxAndChargeSettings(),
+  ]);
+
+  return {
+    corporateAccounts,
+    roomTypes,
+    defaultTaxRate,
+    defaultVatApplied: isGlobalVatEnabled(defaultTaxRate),
+    serviceChargeRate: taxSettings.serviceCharge,
+    requireRateOverrideApproval: taxSettings.requireRateOverrideApproval ?? false,
+    canOverrideVat: paymentAccess.canOverrideVat,
+  };
 }
 
 export type GroupDetailData = {

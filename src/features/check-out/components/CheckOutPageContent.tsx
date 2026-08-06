@@ -4,6 +4,8 @@ import { useMemo, useState, useTransition } from "react";
 import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import { useToast } from "@/hooks/use-toast";
+
 import { CheckOutModal } from "@/components/check-out/CheckOutModal";
 import { EarlyCheckOutModal } from "@/components/check-out/EarlyCheckOutModal";
 import { LateCheckOutModal } from "@/components/check-out/LateCheckOutModal";
@@ -21,6 +23,7 @@ import {
 import { resolveOverstayStatus } from "@/lib/reservations/overstay-status";
 import {
   approveOverstayChargeAction,
+  prepareOverstayCheckoutAction,
   rejectOverstayChargeAction,
   waiveOverstayChargeAction,
 } from "@/features/check-out/actions";
@@ -30,6 +33,7 @@ import { siteConfig } from "@/config/site";
 import type { AuthoritativeSettlement } from "@/lib/folio/authoritative-settlement";
 import type { CheckoutPolicy } from "@/types/late-checkout";
 import type { OverstayCharge } from "@/types/overstay";
+import type { OverstayCheckoutValidation } from "@/types/overstay-checkout";
 import type { Reservation } from "@/types/reservation";
 import {
   AlertTriangle,
@@ -292,12 +296,34 @@ export function CheckOutPageContent({
   overstayByReservation = {},
 }: CheckOutPageContentProps) {
   const router = useRouter();
+  const toast = useToast();
   const [, startTransition] = useTransition();
   const [selected, setSelected] = useState<Reservation | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [overstayValidation, setOverstayValidation] =
+    useState<OverstayCheckoutValidation | null>(null);
   const [earlyReservationId, setEarlyReservationId] = useState<string | null>(null);
   const [lateReservationId, setLateReservationId] = useState<string | null>(null);
   const currentTime = getCurrentTimeString();
+
+  function openStandardCheckout(reservation: Reservation) {
+    setOverstayValidation(null);
+    setSelected(reservation);
+    setModalOpen(true);
+  }
+
+  function openOverstayCheckout(reservation: Reservation) {
+    startTransition(async () => {
+      const result = await prepareOverstayCheckoutAction(reservation.id);
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      setOverstayValidation(result.validation);
+      setSelected(reservation);
+      setModalOpen(true);
+    });
+  }
 
   const queues = useMemo(
     () =>
@@ -364,10 +390,7 @@ export function CheckOutPageContent({
           currentTime={currentTime}
           folioBalances={folioBalances}
           overstayByReservation={overstayByReservation}
-          onCheckOut={(r) => {
-            setSelected(r);
-            setModalOpen(true);
-          }}
+          onCheckOut={openStandardCheckout}
           onLate={setLateReservationId}
           onEarly={setEarlyReservationId}
           onRefresh={refresh}
@@ -382,10 +405,7 @@ export function CheckOutPageContent({
           currentTime={currentTime}
           folioBalances={folioBalances}
           overstayByReservation={overstayByReservation}
-          onCheckOut={(r) => {
-            setSelected(r);
-            setModalOpen(true);
-          }}
+          onCheckOut={openStandardCheckout}
           onLate={setLateReservationId}
           onEarly={setEarlyReservationId}
           onRefresh={refresh}
@@ -400,10 +420,7 @@ export function CheckOutPageContent({
           currentTime={currentTime}
           folioBalances={folioBalances}
           overstayByReservation={overstayByReservation}
-          onCheckOut={(r) => {
-            setSelected(r);
-            setModalOpen(true);
-          }}
+          onCheckOut={openOverstayCheckout}
           onLate={setLateReservationId}
           onEarly={setEarlyReservationId}
           onRefresh={refresh}
@@ -480,7 +497,10 @@ export function CheckOutPageContent({
           <CheckOutModal
             reservation={selected}
             open={modalOpen}
-            onOpenChange={setModalOpen}
+            onOpenChange={(open) => {
+              setModalOpen(open);
+              if (!open) setOverstayValidation(null);
+            }}
             onSuccess={refresh}
             defaultTaxRate={defaultTaxRate}
             defaultVatApplied={defaultVatApplied}
@@ -489,6 +509,10 @@ export function CheckOutPageContent({
             folioSettlement={
               selected ? folioSettlements[selected.id] : undefined
             }
+            overstayValidation={overstayValidation}
+            canManageOverstay={access.canManageOverstay}
+            businessDate={today}
+            onOverstayStateChange={refresh}
           />
           <EarlyCheckOutModal
             reservationId={earlyReservationId}

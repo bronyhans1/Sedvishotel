@@ -147,6 +147,11 @@ export function NightAuditDetailContent({
     notes?: string;
     varianceNotes?: string;
     overstayAcknowledged?: boolean;
+    managerOverride?: boolean;
+    overrideReason?: string;
+    closeClassification?: import("@/lib/night-audit/audit-window").NightAuditCloseClassification;
+    closeWallClock?: string;
+    delayMinutes?: number;
   }) {
     setCloseOpen(false);
     startTransition(async () => {
@@ -445,6 +450,7 @@ export function NightAuditDetailContent({
           auditDateLabel={formatAuditDateLabel(audit.auditDate)}
           isReclose={isReclose}
           loading={isPending}
+          canManagerOverride={access.canManagerOverride}
           onConfirm={runClose}
         />
       ) : null}

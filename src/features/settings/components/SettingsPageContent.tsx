@@ -347,6 +347,54 @@ export function SettingsPageContent({
               <Label>Check-Out Time</Label>
               <Input type="time" value={settings.checkOutTime} onChange={(e) => set("checkOutTime", e.target.value)} />
             </div>
+            <div className="sm:col-span-2 lg:col-span-3">
+              <p className="mb-3 text-sm font-medium">Night Audit Window</p>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Timing governance only. Business Date remains the operational authority.
+                Wall clock never replaces Business Date.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>Earliest Close</Label>
+                  <Input
+                    type="time"
+                    value={settings.nightAuditEarliestClose}
+                    onChange={(e) =>
+                      set("nightAuditEarliestClose", e.target.value)
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Before this → Too Early (manager override)
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Recommended Close</Label>
+                  <Input
+                    type="time"
+                    value={settings.nightAuditRecommendedClose}
+                    onChange={(e) =>
+                      set("nightAuditRecommendedClose", e.target.value)
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Operational recommendation shown to reception
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Latest Close</Label>
+                  <Input
+                    type="time"
+                    value={settings.nightAuditLatestClose}
+                    onChange={(e) =>
+                      set("nightAuditLatestClose", e.target.value)
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    After this → Late (reason required)
+                  </p>
+                </div>
+              </div>
+            </div>
             <div className="space-y-2 sm:col-span-2 lg:col-span-3">
               <Label>Late Checkout Policy</Label>
               <div className="flex flex-wrap gap-4">

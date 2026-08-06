@@ -12,6 +12,9 @@ type Props = {
   search: BookingSearch;
   pricingSettings: PublicBookingPricingSettings;
   className?: string;
+  guestName?: string;
+  extrasSummary?: string[];
+  compact?: boolean;
 };
 
 function formatRoomTypeLabel(categoryId: string): string {
@@ -41,11 +44,21 @@ function SummaryRow({
 }
 
 /** Live booking summary — pricing from shared SHMS `computeStayPricing` via hotel settings. */
-export function BookingSummaryCard({ room, search, pricingSettings, className }: Props) {
+export function BookingSummaryCard({
+  room,
+  search,
+  pricingSettings,
+  className,
+  guestName,
+  extrasSummary,
+  compact = false,
+}: Props) {
   const pricing = useMemo(
     () => calculateBookingPricing(room, search.checkIn, search.checkOut, pricingSettings),
     [room, search.checkIn, search.checkOut, pricingSettings]
   );
+
+  const guests = search.adults + search.children;
 
   return (
     <aside
@@ -53,43 +66,57 @@ export function BookingSummaryCard({ room, search, pricingSettings, className }:
       aria-label="Booking summary"
     >
       <p className="text-xs font-medium uppercase tracking-[0.24em] text-brand-gold">
-        Booking Summary
+        {compact ? "Selected Room" : "Booking Summary"}
       </p>
 
+      <div className="mt-3">
+        <p className="font-serif text-lg font-semibold leading-snug">{room.name}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {formatCurrency(room.pricePerNight)} / Night
+        </p>
+      </div>
+
       <dl className="mt-4 space-y-2.5">
-        <SummaryRow label="Room" value={room.name} />
-        <SummaryRow label="Room Type" value={formatRoomTypeLabel(room.categoryId)} />
-        <SummaryRow label="Check-In Date" value={search.checkIn} />
-        <SummaryRow label="Check-Out Date" value={search.checkOut} />
-        <SummaryRow
-          label="Number of Nights"
-          value={pricing.nights}
-        />
-        <SummaryRow label="Adults" value={search.adults} />
-        <SummaryRow label="Children" value={search.children} />
+        {!compact ? (
+          <SummaryRow label="Room Type" value={formatRoomTypeLabel(room.categoryId)} />
+        ) : null}
+        <SummaryRow label="Stay Dates" value={`${search.checkIn} → ${search.checkOut}`} />
+        <SummaryRow label="Guests" value={`${guests} guest${guests === 1 ? "" : "s"}`} />
+        <SummaryRow label="Nights" value={pricing.nights} />
+        {guestName?.trim() ? <SummaryRow label="Guest" value={guestName.trim()} /> : null}
+        {extrasSummary && extrasSummary.length > 0 ? (
+          <SummaryRow label="Extras" value={extrasSummary.join(", ")} />
+        ) : null}
       </dl>
 
-      <div className="my-4 border-t border-dashed" />
-
-      <dl className="space-y-2.5">
-        <SummaryRow
-          label="Room Rate (per night)"
-          value={formatCurrency(room.pricePerNight)}
-        />
-        <SummaryRow label="Subtotal" value={formatCurrency(pricing.subtotal)} />
-        <SummaryRow
-          label={`Taxes (${pricing.taxLabel}%)`}
-          value={formatCurrency(pricing.taxes)}
-        />
-        <SummaryRow
-          label={`Service Charge (${pricing.serviceLabel}%)`}
-          value={formatCurrency(pricing.service)}
-        />
-      </dl>
+      {!compact ? (
+        <>
+          <div className="my-4 border-t border-dashed" />
+          <dl className="space-y-2.5">
+            <SummaryRow
+              label="Price Per Night"
+              value={formatCurrency(room.pricePerNight)}
+            />
+            <SummaryRow label="Subtotal" value={formatCurrency(pricing.subtotal)} />
+            <SummaryRow
+              label={`Taxes (${pricing.taxLabel}%)`}
+              value={formatCurrency(pricing.taxes)}
+            />
+            <SummaryRow
+              label={`Service Charge (${pricing.serviceLabel}%)`}
+              value={formatCurrency(pricing.service)}
+            />
+          </dl>
+        </>
+      ) : (
+        <div className="my-4 border-t border-dashed" />
+      )}
 
       <div className="mt-4 rounded-xl bg-brand-navy/5 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-brand-navy">Total Amount</span>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm font-semibold text-brand-navy">
+            {compact ? "Estimated Total" : "Total Amount"}
+          </span>
           <span className="font-serif text-xl font-bold text-brand-navy">
             {formatCurrency(pricing.total)}
           </span>

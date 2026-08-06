@@ -114,7 +114,7 @@ export function BookingWidget({ catalogRooms, defaultRoomSlug, compact }: Props)
       {!compact && (
         <>
           <div className="space-y-2">
-            <Label htmlFor="bw-room">Accommodation</Label>
+            <Label htmlFor="bw-room">Accommodation Preference</Label>
             <select
               id="bw-room"
               className={selectClass}
@@ -130,7 +130,7 @@ export function BookingWidget({ catalogRooms, defaultRoomSlug, compact }: Props)
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="bw-requests">Special Requests</Label>
+            <Label htmlFor="bw-requests">Special Requests (optional)</Label>
             <Textarea
               id="bw-requests"
               value={requests}

@@ -169,6 +169,8 @@ export const ActivityActionCodes = {
   RESERVATION_OVERSTAY_REJECTED: "reservation.overstay_rejected",
   RESERVATION_OVERSTAY_WAIVED: "reservation.overstay_waived",
   RESERVATION_OVERSTAY_EVALUATED: "reservation.overstay_evaluated",
+  RESERVATION_OVERSTAY_RECOVERY_EVALUATED:
+    "reservation.overstay_recovery_evaluated",
   BUSINESS_DAY_LOCK_DENIED: "business_day.lock_denied",
   CORRECTION_SESSION_OPENED: "correction_session.opened",
   CORRECTION_SESSION_CLOSED: "correction_session.closed",

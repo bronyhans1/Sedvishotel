@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ACCESS_DENIED_PATH } from "@/lib/auth/route-guard";
 
 import { getReservationAccess } from "@/lib/auth/reservation-access";
+import { getPaymentAccess } from "@/lib/auth/payment-access";
 import { sessionHasPermission } from "@/lib/auth/permissions";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
 import { getCurrentBusinessDate } from "@/lib/dates/business-date";
@@ -10,6 +11,11 @@ import { computeReservationStats } from "@/lib/reservations/mapper";
 import { getReservationService } from "@/lib/reservations/get-reservation-service";
 import { getRoomTypeService } from "@/lib/room-types/get-room-type-service";
 import { loadCheckoutPolicy } from "@/lib/settings/checkout-policy";
+import {
+  getDefaultTaxRate,
+  isGlobalVatEnabled,
+} from "@/lib/settings/get-tax-rate";
+import { loadTaxAndChargeSettings } from "@/lib/settings/pricing-settings";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { Reservation } from "@/types/reservation";
 
@@ -58,11 +64,15 @@ export async function loadReservationsPageData() {
   }
 
   const reservationService = await getReservationService();
-  const [reservations, businessDate, checkoutPolicy] = await Promise.all([
-    reservationService.listReservations(ctx, session),
-    getCurrentBusinessDate(),
-    loadCheckoutPolicy(),
-  ]);
+  const paymentAccess = getPaymentAccess(session);
+  const [reservations, businessDate, checkoutPolicy, defaultTaxRate, taxSettings] =
+    await Promise.all([
+      reservationService.listReservations(ctx, session),
+      getCurrentBusinessDate(),
+      loadCheckoutPolicy(),
+      getDefaultTaxRate(),
+      loadTaxAndChargeSettings(),
+    ]);
 
   const stats = computeReservationStats(reservations);
 
@@ -88,5 +98,10 @@ export async function loadReservationsPageData() {
     roomTypeOptions,
     businessDate,
     checkoutPolicy,
+    defaultTaxRate,
+    defaultVatApplied: isGlobalVatEnabled(defaultTaxRate),
+    serviceChargeRate: taxSettings.serviceCharge,
+    requireRateOverrideApproval: taxSettings.requireRateOverrideApproval ?? false,
+    canOverrideVat: paymentAccess.canOverrideVat,
   };
 }

@@ -102,4 +102,12 @@ export type NightAuditCommandCenter = {
   openMaintenanceBlocks: number;
   openHousekeepingIssues: number;
   timeline: OperationalTimelineEvent[];
+  /** Enterprise Operational Governance */
+  wallClock: string;
+  auditWindow: import("@/lib/night-audit/audit-window").NightAuditWindowPolicy;
+  timing: import("@/lib/night-audit/audit-window").NightAuditTimingAssessment;
+  countdown: import("@/lib/night-audit/audit-window").CountdownCardState;
+  readiness: import("@/lib/night-audit/close-readiness").NightAuditCloseReadiness;
+  reminderStage: 0 | 1 | 2 | 3 | 4 | 5;
+  reminderMessage: string | null;
 };

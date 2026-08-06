@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { supabaseEnv } from "@/lib/supabase/config";
 import { createServerClient } from "@/lib/supabase/server";
 import { createGuestFolioService } from "@/lib/folio/create-guest-folio-service";
+import { getReservationService } from "@/lib/reservations/get-reservation-service";
 import { SupabaseActivityLogRepository } from "@/repositories/supabase/activity-log.repository";
 import { SupabaseGuestFolioRepository } from "@/repositories/supabase/guest-folio.repository";
 import { SupabaseHotelOperatingDayRepository } from "@/repositories/supabase/hotel-operating-day.repository";
@@ -38,6 +39,8 @@ export async function getNightAuditService(): Promise<NightAuditService> {
     activityLogs
   );
 
+  const reservationService = await getReservationService();
+
   return new NightAuditService(
     new SupabaseNightAuditRepository(client),
     new SupabaseShiftHandoverRepository(client),
@@ -49,6 +52,7 @@ export async function getNightAuditService(): Promise<NightAuditService> {
     activityLogs,
     businessDates,
     new SupabaseGuestFolioRepository(client),
-    overstays
+    overstays,
+    reservationService
   );
 }

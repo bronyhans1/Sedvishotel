@@ -63,4 +63,7 @@ export const defaultHotelSettings: HotelSettings = {
   paymentAlerts: true,
   reservationAlerts: true,
   housekeepingAlerts: true,
+  nightAuditEarliestClose: "23:30",
+  nightAuditRecommendedClose: "00:30",
+  nightAuditLatestClose: "02:00",
 };

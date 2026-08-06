@@ -111,6 +111,21 @@ export function mapDbSettingsToHotelSettings(row: DbHotelSettings): HotelSetting
     paymentAlerts: row.payment_alerts,
     reservationAlerts: row.reservation_alerts,
     housekeepingAlerts: row.housekeeping_alerts,
+    nightAuditEarliestClose: readJsonString(
+      json,
+      "nightAuditEarliestClose",
+      "23:30"
+    ),
+    nightAuditRecommendedClose: readJsonString(
+      json,
+      "nightAuditRecommendedClose",
+      "00:30"
+    ),
+    nightAuditLatestClose: readJsonString(
+      json,
+      "nightAuditLatestClose",
+      "02:00"
+    ),
   };
 }
 
@@ -177,6 +192,9 @@ export function mapHotelSettingsToDbUpdate(
       reservationEmailTemplate: settings.reservationEmailTemplate,
       invoiceEmailTemplate: settings.invoiceEmailTemplate,
       reminderEmailTemplate: settings.reminderEmailTemplate,
+      nightAuditEarliestClose: settings.nightAuditEarliestClose,
+      nightAuditRecommendedClose: settings.nightAuditRecommendedClose,
+      nightAuditLatestClose: settings.nightAuditLatestClose,
     },
   };
 }

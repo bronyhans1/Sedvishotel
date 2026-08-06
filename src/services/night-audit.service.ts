@@ -1,5 +1,11 @@
 import { computeCashVariance } from "@/lib/night-audit/cash-variance";
 import {
+  classifyNightAuditTiming,
+  type NightAuditCloseClassification,
+} from "@/lib/night-audit/audit-window";
+import { loadNightAuditWindowPolicy } from "@/lib/settings/night-audit-window";
+import { getCurrentTimeString } from "@/lib/dates/time";
+import {
   mapDbNightAuditRevisionToRevision,
   mapDbNightAuditToNightAudit,
   snapshotToDbFields,
@@ -18,6 +24,7 @@ import type { IUserRepository } from "@/repositories/user.repository";
 import type { AuthSession } from "@/services/auth.service";
 import type { IBusinessDateService } from "@/services/business-date.service";
 import type { OverstayService } from "@/services/overstay.service";
+import type { ReservationService } from "@/services/reservation.service";
 import { ServiceError } from "@/services/types";
 import type { ServiceContext } from "@/services/types";
 import { ActivityActionCodes } from "@/types/database/enums";
@@ -94,7 +101,11 @@ export class NightAuditService implements INightAuditService {
     private readonly activityLogs: IActivityLogRepository,
     private readonly businessDates: IBusinessDateService,
     private readonly folios?: IGuestFolioRepository,
-    private readonly overstays?: OverstayService
+    private readonly overstays?: OverstayService,
+    private readonly arrivalRoomSync?: Pick<
+      ReservationService,
+      "syncArrivalRoomStatusesForBusinessDate"
+    >
   ) {}
 
   async getOverstayWarning(
@@ -369,6 +380,48 @@ export class NightAuditService implements INightAuditService {
       }
     }
 
+    const wallClock = input.closeWallClock ?? getCurrentTimeString();
+    const auditWindow = await loadNightAuditWindowPolicy();
+    const timing = classifyNightAuditTiming(wallClock, auditWindow);
+    const classification: NightAuditCloseClassification =
+      input.closeClassification ?? timing.classification;
+    const delayMinutes = input.delayMinutes ?? timing.delayMinutes;
+
+    if (classification === "too_early") {
+      if (!input.managerOverride) {
+        throw new ServiceError(
+          `${timing.message} Manager override is required.`,
+          "VALIDATION",
+          400
+        );
+      }
+      if (!sessionHasPermission(session, "night_audit", "manage")) {
+        throw new ServiceError(
+          "Manager override requires night_audit.manage.",
+          "FORBIDDEN",
+          403
+        );
+      }
+      if (!input.overrideReason?.trim()) {
+        throw new ServiceError(
+          "Override reason is required for Too Early Night Audit close.",
+          "VALIDATION",
+          400
+        );
+      }
+    }
+
+    if (
+      (classification === "late" || classification === "overdue") &&
+      !input.overrideReason?.trim()
+    ) {
+      throw new ServiceError(
+        `${timing.message} A close reason is required.`,
+        "VALIDATION",
+        400
+      );
+    }
+
     const row = await this.nightAudits.getByDate(input.auditDate);
     if (!row) {
       throw new ServiceError(
@@ -405,7 +458,19 @@ export class NightAuditService implements INightAuditService {
     const cashVariance = computeCashVariance(cashExpected, cashCounted);
     const openShift = await this.shiftHandovers.getOpenShift();
     const snapshotFields = snapshotToDbFields(snapshot);
-    const notes = input.notes?.trim() || null;
+    const governanceNote = [
+      `[Governance] classification=${classification}`,
+      `wall_clock=${wallClock}`,
+      `delay_minutes=${delayMinutes}`,
+      `override=${Boolean(input.managerOverride)}`,
+      input.overrideReason?.trim()
+        ? `reason=${input.overrideReason.trim()}`
+        : null,
+      `window=${auditWindow.earliestClose}/${auditWindow.recommendedClose}/${auditWindow.latestClose}`,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+    const notes = [input.notes?.trim(), governanceNote].filter(Boolean).join("\n") || null;
     const varianceNotes = input.varianceNotes?.trim() || null;
 
     const updated = await this.nightAudits.update(row.id, {
@@ -473,6 +538,18 @@ export class NightAuditService implements INightAuditService {
         refund_total: snapshot.refundTotal,
         net_revenue: snapshot.netRevenue,
         closed_by: ctx.userId,
+        close_classification: classification,
+        close_wall_clock: wallClock,
+        delay_minutes: delayMinutes,
+        manager_override: Boolean(input.managerOverride),
+        override_user: input.managerOverride ? ctx.userId : null,
+        override_reason: input.overrideReason?.trim() || null,
+        audit_window: {
+          earliest: auditWindow.earliestClose,
+          recommended: auditWindow.recommendedClose,
+          latest: auditWindow.latestClose,
+          morning_warning_hour: auditWindow.morningWarningHour,
+        },
       },
     });
 
@@ -496,9 +573,19 @@ export class NightAuditService implements INightAuditService {
         nightAuditId: updated.id,
       });
 
+      const nextBusinessDate =
+        await this.businessDates.getCurrentBusinessDate();
+
+      if (this.arrivalRoomSync) {
+        await this.arrivalRoomSync.syncArrivalRoomStatusesForBusinessDate(
+          ctx,
+          session,
+          nextBusinessDate,
+          "night_audit_business_date_advance"
+        );
+      }
+
       if (this.overstays) {
-        const nextBusinessDate =
-          await this.businessDates.getCurrentBusinessDate();
         await this.overstays.processBusinessDateCharges(
           ctx,
           session,

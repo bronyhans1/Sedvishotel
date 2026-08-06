@@ -121,6 +121,17 @@ export class OverstayService {
     return mapCharge(rows[rows.length - 1]!);
   }
 
+  async getChargeForBusinessDate(
+    reservationId: string,
+    businessDate: string
+  ): Promise<OverstayCharge | null> {
+    const row = await this.charges.getByReservationAndBusinessDate(
+      reservationId,
+      businessDate
+    );
+    return row ? mapCharge(row) : null;
+  }
+
   async listPendingCharges(): Promise<OverstayCharge[]> {
     return (await this.charges.listPending()).map(mapCharge);
   }
@@ -604,6 +615,180 @@ export class OverstayService {
       policyCheckOutTime,
       chargeStatus: latest?.status ?? null,
     });
+  }
+
+  /**
+   * Manager-initiated recovery evaluation for a single reservation (v2.4.1).
+   * Reuses processSingleReservation — does not duplicate charge or policy logic.
+   */
+  async recoverReservationEvaluation(
+    ctx: ServiceContext,
+    session: AuthSession,
+    reservationId: string,
+    businessDate: string,
+    options?: { policyCheckOutTime?: string }
+  ): Promise<{
+    outcome: "posted" | "pending" | "skipped" | "already" | "none";
+    charge: OverstayCharge | null;
+  }> {
+    this.requireManage(session);
+    const policy = await loadOverstayPolicy();
+    const policyCheckOutTime = options?.policyCheckOutTime ?? "11:00";
+
+    const existing = await this.charges.getByReservationAndBusinessDate(
+      reservationId,
+      businessDate
+    );
+
+    if (existing) {
+      if (existing.status === "posted") {
+        if (!existing.folio_entry_id) {
+          const mapped = mapCharge(existing);
+          const description = buildOverstayFolioDescription({
+            roomNumber: mapped.roomNumber ?? "—",
+            businessDate: mapped.businessDate,
+            nights: 1,
+          });
+          const entry = await this.folios.integrateOverstayCharge(
+            ctx,
+            session,
+            mapped.reservationId,
+            mapped.amount,
+            mapped.sourceReference,
+            description
+          );
+          await this.charges.update(existing.id, {
+            folioEntryId: entry?.id ?? null,
+            postedAt: mapped.postedAt ?? new Date().toISOString(),
+          });
+          const posted = await this.charges.getBySourceReference(
+            existing.source_reference
+          );
+          await this.log(ctx, session, {
+            action: `Overstay recovery — re-posted missing folio integration`,
+            actionCode: ActivityActionCodes.RESERVATION_OVERSTAY_RECOVERY_EVALUATED,
+            entityId: existing.id,
+            metadata: {
+              business_date: businessDate,
+              reservation_id: reservationId,
+              recovery: true,
+              outcome: "posted",
+            },
+          });
+          return {
+            outcome: "posted",
+            charge: posted ? mapCharge(posted) : mapped,
+          };
+        }
+        return { outcome: "already", charge: mapCharge(existing) };
+      }
+
+      if (existing.status === "pending") {
+        throw new ServiceError(
+          "Pending overstay charge — use Approve, Reject, or Waive instead of recovery.",
+          "VALIDATION",
+          400
+        );
+      }
+
+      if (existing.status === "skipped") {
+        const snapshot = existing.policy_snapshot ?? {};
+        const evaluatedMode =
+          (snapshot.chargeMode as OverstayPolicy["chargeMode"]) ?? "none";
+        if (policy.chargeMode === "none") {
+          throw new ServiceError(
+            "Recovery not applicable — current policy is No Automatic Charge.",
+            "VALIDATION",
+            400
+          );
+        }
+        if (evaluatedMode === policy.chargeMode) {
+          throw new ServiceError(
+            "Recovery not applicable — charge was intentionally skipped under current policy.",
+            "VALIDATION",
+            400
+          );
+        }
+        const removed = await this.charges.deleteIfSkipped(existing.id);
+        if (!removed) {
+          throw new ServiceError(
+            "Could not clear skipped ledger row for recovery.",
+            "VALIDATION",
+            400
+          );
+        }
+      }
+
+      if (existing.status === "waived" || existing.status === "rejected") {
+        throw new ServiceError(
+          `Recovery not applicable for ${existing.status} overstay charges.`,
+          "VALIDATION",
+          400
+        );
+      }
+
+      if (existing.status === "approved") {
+        await this.postApprovedCharge(ctx, session, mapCharge(existing));
+        const posted = await this.charges.getBySourceReference(
+          existing.source_reference
+        );
+        await this.log(ctx, session, {
+          action: `Overstay recovery — posted approved charge to folio`,
+          actionCode: ActivityActionCodes.RESERVATION_OVERSTAY_RECOVERY_EVALUATED,
+          entityId: existing.id,
+          metadata: {
+            business_date: businessDate,
+            reservation_id: reservationId,
+            recovery: true,
+            outcome: "posted",
+          },
+        });
+        return {
+          outcome: "posted",
+          charge: posted ? mapCharge(posted) : mapCharge(existing),
+        };
+      }
+    }
+
+    if (policy.chargeMode === "none") {
+      throw new ServiceError(
+        "Recovery not applicable — current policy is No Automatic Charge.",
+        "VALIDATION",
+        400
+      );
+    }
+
+    const outcome = await this.processSingleReservation(
+      ctx,
+      session,
+      reservationId,
+      businessDate,
+      policy,
+      policyCheckOutTime
+    );
+
+    const chargeRow = await this.charges.getByReservationAndBusinessDate(
+      reservationId,
+      businessDate
+    );
+
+    await this.log(ctx, session, {
+      action: `Overstay recovery evaluation for business date ${businessDate}`,
+      actionCode: ActivityActionCodes.RESERVATION_OVERSTAY_RECOVERY_EVALUATED,
+      entityId: chargeRow?.id ?? null,
+      metadata: {
+        business_date: businessDate,
+        reservation_id: reservationId,
+        recovery: true,
+        outcome,
+        policy,
+      },
+    });
+
+    return {
+      outcome: outcome === "already" ? "already" : outcome,
+      charge: chargeRow ? mapCharge(chargeRow) : null,
+    };
   }
 
   private async findChargeOrThrow(chargeId: string): Promise<DbOverstayCharge> {

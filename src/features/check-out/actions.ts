@@ -10,6 +10,8 @@ import { getPaymentService } from "@/lib/payments/get-payment-service";
 import { getReservationService } from "@/lib/reservations/get-reservation-service";
 import type { PaymentFormValues } from "@/types/payment";
 import { loadCheckoutPolicy } from "@/lib/settings/checkout-policy";
+import { getCheckOutAccess } from "@/lib/auth/check-out-access";
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import { SupabasePaymentRepository } from "@/repositories/supabase/payment.repository";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { supabaseEnv } from "@/lib/supabase/config";
@@ -64,6 +66,19 @@ export async function completeCheckOutAction(
 ): Promise<CheckOutActionResult> {
   try {
     const { session, ctx } = await getServiceContext();
+    const access = getCheckOutAccess(session);
+    const businessDate = await getCurrentBusinessDate();
+    const { getOverstayCheckoutCoordinator } = await import(
+      "@/lib/overstay/get-overstay-checkout-coordinator"
+    );
+    const coordinator = await getOverstayCheckoutCoordinator();
+    const validation = await coordinator.validateForReservation(
+      reservationId,
+      businessDate,
+      access.canManageOverstay
+    );
+    await coordinator.assertCheckoutAllowed(validation);
+
     const reservationService = await getReservationService();
     const paymentService = await getPaymentService();
 
@@ -195,6 +210,90 @@ export async function completeLateCheckOutAction(
 export type OverstayChargeActionResult =
   | { success: true }
   | { success: false; error: string };
+
+export type PrepareOverstayCheckoutResult =
+  | {
+      success: true;
+      validation: import("@/types/overstay-checkout").OverstayCheckoutValidation;
+    }
+  | { success: false; error: string };
+
+export type RecoverOverstayChargeResult =
+  | {
+      success: true;
+      validation: import("@/types/overstay-checkout").OverstayCheckoutValidation;
+      outcome: string;
+    }
+  | { success: false; error: string };
+
+export async function prepareOverstayCheckoutAction(
+  reservationId: string
+): Promise<PrepareOverstayCheckoutResult> {
+  try {
+    const { session, ctx } = await getServiceContext();
+    const access = getCheckOutAccess(session);
+    if (!access.canProcess) {
+      return { success: false, error: "Forbidden: check_out.edit required." };
+    }
+    const businessDate = await getCurrentBusinessDate();
+    const { getOverstayCheckoutCoordinator } = await import(
+      "@/lib/overstay/get-overstay-checkout-coordinator"
+    );
+    const coordinator = await getOverstayCheckoutCoordinator();
+    const result = await coordinator.prepareCheckout(
+      ctx,
+      session,
+      reservationId,
+      businessDate,
+      {
+        canManageOverstay: access.canManageOverstay,
+        canRecordPayment: true,
+      }
+    );
+    return { success: true, validation: result.validation };
+  } catch (err) {
+    unstable_rethrow(err);
+    return { success: false, error: toSafeActionError(err) };
+  }
+}
+
+export async function recoverOverstayChargeAction(
+  reservationId: string,
+  businessDate: string
+): Promise<RecoverOverstayChargeResult> {
+  try {
+    const { session, ctx } = await getServiceContext();
+    const access = getCheckOutAccess(session);
+    if (!access.canManageOverstay) {
+      return {
+        success: false,
+        error: "Manager permission required (check_out.manage).",
+      };
+    }
+    const { getOverstayCheckoutCoordinator } = await import(
+      "@/lib/overstay/get-overstay-checkout-coordinator"
+    );
+    const coordinator = await getOverstayCheckoutCoordinator();
+    const result = await coordinator.recoverMissingCharge(
+      ctx,
+      session,
+      reservationId,
+      businessDate,
+      access.canManageOverstay
+    );
+    revalidatePath("/dashboard/check-out");
+    revalidatePath("/dashboard/reports");
+    revalidateDashboardWidgets();
+    return {
+      success: true,
+      validation: result.validation,
+      outcome: result.outcome,
+    };
+  } catch (err) {
+    unstable_rethrow(err);
+    return { success: false, error: toSafeActionError(err) };
+  }
+}
 
 export async function approveOverstayChargeAction(
   chargeId: string,

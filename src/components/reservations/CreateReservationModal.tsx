@@ -32,6 +32,11 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   roomTypeOptions: ReservationRoomTypeOption[];
+  defaultTaxRate?: number;
+  defaultVatApplied?: boolean;
+  serviceChargeRate?: number;
+  requireRateOverrideApproval?: boolean;
+  canOverrideVat?: boolean;
   onSuccess?: () => void;
 };
 
@@ -55,6 +60,11 @@ export function CreateReservationModal({
   open,
   onOpenChange,
   roomTypeOptions,
+  defaultTaxRate = 0.15,
+  defaultVatApplied = true,
+  serviceChargeRate = 0,
+  requireRateOverrideApproval = false,
+  canOverrideVat = false,
   onSuccess,
 }: Props) {
   const toast = useToast();
@@ -63,6 +73,7 @@ export function CreateReservationModal({
   const [roomTypeId, setRoomTypeId] = useState("");
   const [pricing, setPricing] = useState<ReservationPricingInput>({
     pricingMode: "standard",
+    vatApplied: defaultVatApplied,
   });
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
   const [submitError, setSubmitError] = useState("");
@@ -103,7 +114,7 @@ export function CreateReservationModal({
     if (!next) {
       setValues(initial);
       setRoomTypeId("");
-      setPricing({ pricingMode: "standard" });
+      setPricing({ pricingMode: "standard", vatApplied: defaultVatApplied });
       setErrors({});
       setSubmitError("");
     }
@@ -125,6 +136,17 @@ export function CreateReservationModal({
     }
     if (!roomTypeId) next.roomType = "Room type is required";
     if (!values.roomNumber) next.roomNumber = "Select an available room";
+    const vatApplied = pricing.vatApplied ?? defaultVatApplied;
+    if (!vatApplied && defaultTaxRate > 0 && !pricing.vatExemptionReason?.trim()) {
+      next.vatExemptionReason = "VAT exemption reason is required";
+    }
+    if (
+      !vatApplied &&
+      pricing.vatExemptionReason === "Other" &&
+      !pricing.vatExemptionNotes?.trim()
+    ) {
+      next.vatExemptionNotes = "Notes are required for Other";
+    }
     setErrors(next);
     if (Object.keys(next).length > 0) return;
 
@@ -132,7 +154,10 @@ export function CreateReservationModal({
     startTransition(async () => {
       const result = await createReservationAction({
         ...values,
-        pricing,
+        pricing: {
+          ...pricing,
+          vatApplied,
+        },
       });
       if (!result.success) {
         setSubmitError(result.error);
@@ -358,6 +383,10 @@ export function CreateReservationModal({
               checkIn={values.checkInDate}
               checkOut={values.checkOutDate}
               pricingRules={selectedType?.pricingRules ?? []}
+              taxRate={defaultTaxRate}
+              serviceChargeRate={serviceChargeRate}
+              requireApproval={requireRateOverrideApproval}
+              canOverrideVat={canOverrideVat}
               value={pricing}
               onChange={setPricing}
             />

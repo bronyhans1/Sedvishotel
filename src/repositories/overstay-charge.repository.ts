@@ -50,4 +50,6 @@ export interface IOverstayChargeRepository {
     reservationId: string,
     excludeStatuses?: DbOverstayChargeStatus[]
   ): Promise<boolean>;
+  /** Recovery only — removes a skipped ledger row so re-evaluation can proceed. */
+  deleteIfSkipped(id: string): Promise<boolean>;
 }

@@ -72,7 +72,7 @@ const initialState: WizardState = {
   blockRoomCount: 1,
   blockHoldUntil: "",
   assignLater: true,
-  pricing: { pricingMode: "standard" },
+  pricing: { pricingMode: "standard", vatApplied: true },
 };
 
 type Props = {
@@ -82,7 +82,13 @@ type Props = {
 export function GroupBookingWizard({ options }: Props) {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [state, setState] = useState<WizardState>(initialState);
+  const [state, setState] = useState<WizardState>({
+    ...initialState,
+    pricing: {
+      pricingMode: "standard",
+      vatApplied: options.defaultVatApplied,
+    },
+  });
   const [groupId, setGroupId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -419,6 +425,10 @@ export function GroupBookingWizard({ options }: Props) {
                     checkIn={state.arrivalDate}
                     checkOut={state.departureDate}
                     pricingRules={roomType.pricingRules}
+                    taxRate={options.defaultTaxRate}
+                    serviceChargeRate={options.serviceChargeRate}
+                    requireApproval={options.requireRateOverrideApproval}
+                    canOverrideVat={options.canOverrideVat}
                     value={state.pricing}
                     onChange={(pricing) => update("pricing", pricing)}
                   />

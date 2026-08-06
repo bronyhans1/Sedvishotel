@@ -59,4 +59,8 @@ export type HotelSettings = {
   paymentAlerts: boolean;
   reservationAlerts: boolean;
   housekeepingAlerts: boolean;
+  /** Night Audit Window (Enterprise Operational Governance) — HH:mm */
+  nightAuditEarliestClose: string;
+  nightAuditRecommendedClose: string;
+  nightAuditLatestClose: string;
 };

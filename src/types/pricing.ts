@@ -63,6 +63,10 @@ export type ReservationPricingInput = {
   overrideReason?: OverrideReason;
   overrideReasonDetail?: string;
   approvedById?: string;
+  /** VAT Applied (default) / VAT Exempt — same model as Walk-In / Checkout / POS. */
+  vatApplied?: boolean;
+  vatExemptionReason?: import("@/types/payment").VatExemptionReason | "";
+  vatExemptionNotes?: string;
 };
 
 export type ReservationPricingSnapshot = {

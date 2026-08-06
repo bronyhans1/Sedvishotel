@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { LiveRateCalculator } from "@/components/pricing/LiveRateCalculator";
+import { PaymentTaxSection } from "@/components/payments/PaymentTaxSection";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -10,7 +11,10 @@ import {
   rulesForBooking,
 } from "@/lib/reservations/rate-management";
 import type { WalkInPricingSnapshot } from "@/lib/walk-in/pricing";
-import { formatRatePercentLabel } from "@/lib/reservations/pricing";
+import {
+  applyVatExemptionToStayPricing,
+  formatRatePercentLabel,
+} from "@/lib/reservations/pricing";
 import {
   BOOKING_PRICING_MODES,
   OVERRIDE_REASON_LABELS,
@@ -36,6 +40,8 @@ export type ReservationPricingSectionProps = {
   taxRate?: number;
   serviceChargeRate?: number;
   requireApproval?: boolean;
+  /** Same permission gate as Walk-In / Checkout / POS. */
+  canOverrideVat?: boolean;
   value: ReservationPricingInput;
   onChange: (next: ReservationPricingInput) => void;
   showLiveSummary?: boolean;
@@ -52,6 +58,7 @@ export function ReservationPricingSection({
   taxRate = 0.15,
   serviceChargeRate = 0,
   requireApproval = false,
+  canOverrideVat = false,
   value,
   onChange,
   showLiveSummary = true,
@@ -59,6 +66,7 @@ export function ReservationPricingSection({
   walkInVat = false,
 }: ReservationPricingSectionProps) {
   const pricingMode = value.pricingMode ?? "standard";
+  const vatApplied = taxRate > 0 ? (value.vatApplied ?? true) : false;
   const [localChargedRate, setLocalChargedRate] = useState(
     value.chargedRate ?? rackRate
   );
@@ -73,12 +81,17 @@ export function ReservationPricingSection({
     setLocalChargedRate(value.chargedRate ?? rackRate);
   }, [pricingMode, value.chargedRate, rackRate]);
 
-  const preview = useMemo(() => {
-    if (pricingSnapshot) return pricingSnapshot;
-    if (!checkIn || !checkOut || checkOut <= checkIn || rackRate <= 0) {
-      return null;
+  const { preview, vatAmountPreview } = useMemo(() => {
+    if (pricingSnapshot) {
+      return {
+        preview: pricingSnapshot,
+        vatAmountPreview: pricingSnapshot.taxes,
+      };
     }
-    return buildReservationPricingSnapshot({
+    if (!checkIn || !checkOut || checkOut <= checkIn || rackRate <= 0) {
+      return { preview: null, vatAmountPreview: 0 };
+    }
+    const snapshot = buildReservationPricingSnapshot({
       rackRate,
       checkIn,
       checkOut,
@@ -93,6 +106,23 @@ export function ReservationPricingSection({
       serviceChargeRate,
       walkInVat,
     });
+    if (walkInVat) {
+      return { preview: snapshot, vatAmountPreview: snapshot.taxes };
+    }
+    const adjusted = applyVatExemptionToStayPricing(
+      {
+        numberOfNights: snapshot.numberOfNights,
+        subtotal: snapshot.subtotal,
+        taxes: snapshot.taxes,
+        serviceCharge: snapshot.serviceCharge,
+        totalAmount: snapshot.totalAmount,
+      },
+      vatApplied
+    );
+    return {
+      preview: { ...snapshot, ...adjusted },
+      vatAmountPreview: snapshot.taxes,
+    };
   }, [
     pricingSnapshot,
     rackRate,
@@ -105,6 +135,7 @@ export function ReservationPricingSection({
     taxRate,
     serviceChargeRate,
     walkInVat,
+    vatApplied,
   ]);
 
   const availableModes = useMemo(() => {
@@ -225,6 +256,34 @@ export function ReservationPricingSection({
           </>
         )}
       </div>
+
+      {!walkInVat && taxRate > 0 ? (
+        <PaymentTaxSection
+          vatRate={taxRate}
+          vatApplied={vatApplied}
+          vatAmount={vatAmountPreview}
+          canOverrideVat={canOverrideVat}
+          values={{
+            vatApplied,
+            vatExemptionReason: value.vatExemptionReason ?? "",
+            vatExemptionNotes: value.vatExemptionNotes ?? "",
+          }}
+          onChange={(patch) => {
+            updatePricing({
+              vatApplied:
+                patch.vatApplied !== undefined ? patch.vatApplied : vatApplied,
+              vatExemptionReason:
+                patch.vatExemptionReason !== undefined
+                  ? patch.vatExemptionReason
+                  : value.vatExemptionReason,
+              vatExemptionNotes:
+                patch.vatExemptionNotes !== undefined
+                  ? patch.vatExemptionNotes
+                  : value.vatExemptionNotes,
+            });
+          }}
+        />
+      ) : null}
 
       {showLiveSummary && preview ? (
         <LiveRateCalculator

@@ -170,4 +170,18 @@ export class SupabaseOverstayChargeRepository
     const rows = await this.listByReservation(reservationId);
     return rows.some((row) => !excludeStatuses.includes(row.status));
   }
+
+  async deleteIfSkipped(id: string): Promise<boolean> {
+    const row = await this.getById(id);
+    if (!row || row.status !== "skipped") return false;
+    const { error } = await this.client
+      .from("overstay_charges")
+      .delete()
+      .eq("id", id)
+      .eq("status", "skipped");
+    if (error) {
+      throw new Error(`Failed to delete skipped overstay charge: ${error.message}`);
+    }
+    return true;
+  }
 }

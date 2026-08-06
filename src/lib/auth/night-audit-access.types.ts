@@ -8,4 +8,6 @@ export type NightAuditAccess = {
   canRecloseHistorical: boolean;
   /** Administrator: view immutable revision history. */
   canViewRevisions: boolean;
+  /** Too Early close / governance override (night_audit.manage). */
+  canManagerOverride: boolean;
 };

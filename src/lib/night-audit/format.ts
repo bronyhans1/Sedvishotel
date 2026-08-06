@@ -78,6 +78,7 @@ export function buildNightAuditCsv(audit: NightAudit): string {
     "Closing",
     `Closed By,${audit.closedByName ?? ""}`,
     `Closed At,${audit.closedAt ?? ""}`,
+    `Notes,${(audit.notes ?? "").replace(/\n/g, " | ")}`,
     `Reopened By,${audit.reopenedByName ?? ""}`,
     `Reopened At,${audit.reopenedAt ?? ""}`,
     `Reopen Reason,${audit.reopenReason ?? ""}`,

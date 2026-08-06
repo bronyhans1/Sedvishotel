@@ -45,6 +45,22 @@ export function computeStayPricing(input: StayPricingInput): StayPricingResult {
   };
 }
 
+/**
+ * Preview helper: keep service charge, zero VAT when exempt.
+ * Does not replace computeStayPricing — callers still use the stay engine first.
+ */
+export function applyVatExemptionToStayPricing(
+  result: StayPricingResult,
+  vatApplied: boolean
+): StayPricingResult {
+  if (vatApplied) return result;
+  return {
+    ...result,
+    taxes: 0,
+    totalAmount: result.subtotal + result.serviceCharge,
+  };
+}
+
 function roomRateTotal(roomRate: number, numberOfNights: number): number {
   return roomRate * numberOfNights;
 }

@@ -39,6 +39,11 @@ type ReservationsPageContentProps = {
   roomTypeOptions: ReservationRoomTypeOption[];
   businessDate: string;
   checkoutPolicy: CheckoutPolicy;
+  defaultTaxRate: number;
+  defaultVatApplied: boolean;
+  serviceChargeRate: number;
+  requireRateOverrideApproval: boolean;
+  canOverrideVat: boolean;
   initialFilters?: Partial<ReservationFilterState>;
 };
 
@@ -49,6 +54,11 @@ export function ReservationsPageContent({
   roomTypeOptions,
   businessDate,
   checkoutPolicy,
+  defaultTaxRate,
+  defaultVatApplied,
+  serviceChargeRate,
+  requireRateOverrideApproval,
+  canOverrideVat,
   initialFilters,
 }: ReservationsPageContentProps) {
   const router = useRouter();
@@ -131,6 +141,11 @@ export function ReservationsPageContent({
           open={createOpen}
           onOpenChange={setCreateOpen}
           roomTypeOptions={roomTypeOptions}
+          defaultTaxRate={defaultTaxRate}
+          defaultVatApplied={defaultVatApplied}
+          serviceChargeRate={serviceChargeRate}
+          requireRateOverrideApproval={requireRateOverrideApproval}
+          canOverrideVat={canOverrideVat}
           onSuccess={refresh}
         />
       )}

@@ -16,6 +16,8 @@ export const SYSTEM_HEAL_NOTES = {
     "Automatically corrected by SHMS operational integrity migration (shift handover business_date backfill).",
   CORRECTION_SESSION_ORPHAN_HEAL:
     "Automatically corrected by SHMS operational integrity migration (orphan correction session).",
+  ARRIVAL_LIFECYCLE_RECONCILE:
+    "Room status reconciled by Reservation Arrival Lifecycle against current Business Date.",
 } as const;
 
 export type SystemHealNoteKey = keyof typeof SYSTEM_HEAL_NOTES;

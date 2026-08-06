@@ -1,3 +1,7 @@
+import {
+  applyStayVatExemption,
+  resolveStayVatApplied,
+} from "@/lib/payments/resolve-vat";
 import { getCheckInAccess } from "@/lib/auth/check-in-access";
 import { getCheckOutAccess } from "@/lib/auth/check-out-access";
 import { getPaymentAccess } from "@/lib/auth/payment-access";
@@ -579,6 +583,7 @@ export class ReservationService implements IReservationService {
       checkOut: string;
       pricing?: ReservationFormValues["pricing"];
       userId: string;
+      session: AuthSession;
       existing?: DbReservation;
     }
   ) {
@@ -617,30 +622,75 @@ export class ReservationService implements IReservationService {
       requireOverrideApproval: this.pricingSettings.requireRateOverrideApproval,
     });
 
+    let vatApplied = true;
+    if (input.pricing && input.pricing.vatApplied !== undefined) {
+      vatApplied = resolveStayVatApplied(
+        input.session,
+        {
+          vatApplied: input.pricing.vatApplied,
+          vatExemptionReason: input.pricing.vatExemptionReason,
+          vatExemptionNotes: input.pricing.vatExemptionNotes,
+        },
+        this.pricingSettings.taxRate
+      ).vatApplied;
+    } else if (
+      input.existing &&
+      this.pricingSettings.taxRate > 0 &&
+      Number(input.existing.subtotal) > 0 &&
+      Number(input.existing.taxes) === 0
+    ) {
+      // Preserve prior VAT-exempt snapshot without re-validating reason.
+      vatApplied = false;
+    }
+
+    const financials = applyStayVatExemption(
+      {
+        subtotal: snapshot.subtotal,
+        taxes: snapshot.taxes,
+        serviceCharge: snapshot.serviceCharge,
+        totalAmount: snapshot.totalAmount,
+      },
+      vatApplied
+    );
+
+    const adjustedSnapshot = {
+      ...snapshot,
+      taxes: financials.taxes,
+      totalAmount: financials.totalAmount,
+    };
+
     const pricingChanged =
       !input.existing ||
-      snapshot.chargedRate !== Number(input.existing.room_rate) ||
-      snapshot.pricingMode !== input.existing.pricing_mode ||
-      snapshot.rackRate !== Number(input.existing.rack_rate ?? input.existing.room_rate);
+      adjustedSnapshot.chargedRate !== Number(input.existing.room_rate) ||
+      adjustedSnapshot.pricingMode !== input.existing.pricing_mode ||
+      adjustedSnapshot.rackRate !==
+        Number(input.existing.rack_rate ?? input.existing.room_rate) ||
+      adjustedSnapshot.taxes !== Number(input.existing.taxes);
 
     const history = input.existing
       ? parseRateOverrideHistory(input.existing.rate_override_history)
       : [];
 
     const finalHistory =
-      pricingChanged && snapshot.historyEntry
-        ? [...history, snapshot.historyEntry]
+      pricingChanged && adjustedSnapshot.historyEntry
+        ? [...history, adjustedSnapshot.historyEntry]
         : history;
 
-    return { snapshot, history: finalHistory, pricingChanged };
+    return { snapshot: adjustedSnapshot, history: finalHistory, pricingChanged };
   }
 
   private roomStatusForReservation(
-    status: DbReservationStatus
+    status: DbReservationStatus,
+    options?: { checkInDate?: string; businessDate?: string }
   ): DbRoomStatus | null {
     switch (status) {
-      case "confirmed":
-        return "reserved";
+      case "confirmed": {
+        const checkInDate = options?.checkInDate;
+        const businessDate = options?.businessDate;
+        // Arrival lifecycle: reserved only on/after check-in Business Date.
+        if (!checkInDate || !businessDate) return null;
+        return checkInDate <= businessDate ? "reserved" : "available";
+      }
       case "checked_in":
         return "occupied";
       case "checked_out":
@@ -653,21 +703,39 @@ export class ReservationService implements IReservationService {
     }
   }
 
+  /** Confirmed future stays must not demote occupied/cleaning/maintenance rooms. */
+  private canApplyConfirmedRoomStatus(
+    previous: DbRoomStatus,
+    next: DbRoomStatus
+  ): boolean {
+    if (next === "reserved" || next === "available") {
+      return previous === "available" || previous === "reserved";
+    }
+    return false;
+  }
+
   private async syncRoomStatus(
     ctx: ServiceContext,
     session: AuthSession,
     roomId: string,
     status: DbReservationStatus,
-    reservationId: string
+    reservationId: string,
+    checkInDate?: string
   ): Promise<void> {
     logEarlyCheckoutPhase("room status update", reservationId, {
       roomId,
       reservationStatus: status,
+      checkInDate: checkInDate ?? null,
       query: "rooms.select/update",
     });
 
     try {
-      const next = this.roomStatusForReservation(status);
+      const businessDate =
+        status === "confirmed" ? await getCurrentBusinessDate() : undefined;
+      const next = this.roomStatusForReservation(status, {
+        checkInDate,
+        businessDate,
+      });
       if (!next) {
         logEarlyCheckoutPhase("room status update OK", reservationId, {
           roomId,
@@ -711,6 +779,24 @@ export class ReservationService implements IReservationService {
         return;
       }
 
+      if (
+        status === "confirmed" &&
+        !this.canApplyConfirmedRoomStatus(previous, next)
+      ) {
+        logEarlyCheckoutPhase("room status update OK", reservationId, {
+          roomId,
+          roomNumber: room.room_number,
+          previousStatus: previous,
+          nextStatus: next,
+          skipped: "unsafe confirmed transition",
+        });
+        await this.logEarlyCheckoutOperationalStateSnapshot(
+          "room status update",
+          reservationId
+        );
+        return;
+      }
+
       await this.rooms.changeStatus(roomId, next);
 
       await this.activityLogs.create({
@@ -725,6 +811,8 @@ export class ReservationService implements IReservationService {
           reservation_id: reservationId,
           previous_status: previous,
           new_status: next,
+          check_in_date: checkInDate ?? null,
+          business_date: businessDate ?? null,
         },
       });
 
@@ -1015,7 +1103,14 @@ export class ReservationService implements IReservationService {
       });
     }
 
-    await this.syncRoomStatus(ctx, session, roomId, newStatus, updated.id);
+    await this.syncRoomStatus(
+      ctx,
+      session,
+      roomId,
+      newStatus,
+      updated.id,
+      updated.check_in_date
+    );
   }
 
   private async recordGuestCompletedStayIfNeeded(
@@ -1084,6 +1179,12 @@ export class ReservationService implements IReservationService {
   ): Promise<AvailableRoom[]> {
     this.require(session, "view");
 
+    // Lazy process-level heal so Walk-In never waits on Night Audit after deploy.
+    const { ensureArrivalLifecycleReconciled } = await import(
+      "@/lib/reservations/ensure-arrival-lifecycle"
+    );
+    await ensureArrivalLifecycleReconciled();
+
     const roomIds = await this.reservations.checkAvailability(query);
     const allRooms = await this.rooms.getAll(false);
     const { resolveFloorLabel } = await import("@/lib/rooms/mapper");
@@ -1125,6 +1226,7 @@ export class ReservationService implements IReservationService {
       checkOut: values.checkOutDate,
       pricing: values.pricing,
       userId: ctx.userId,
+      session,
     });
 
     if (
@@ -1220,7 +1322,18 @@ export class ReservationService implements IReservationService {
       });
     }
 
-    await this.syncRoomStatus(ctx, session, room.id, values.status, row.id);
+    await this.syncRoomStatus(
+      ctx,
+      session,
+      room.id,
+      values.status,
+      row.id,
+      values.checkInDate
+    );
+
+    await this.reconcileArrivalLifecycle(ctx, session, {
+      trigger: "reservation_create",
+    });
 
     const detail = await this.reservations.getById(row.id);
     if (!detail) {
@@ -1288,6 +1401,7 @@ export class ReservationService implements IReservationService {
           checkOut: values.checkOutDate,
           pricing: values.pricing,
           userId: ctx.userId,
+          session,
           existing,
         })
       : {
@@ -1405,14 +1519,26 @@ export class ReservationService implements IReservationService {
       if (roomChanged) {
         await this.rooms.changeStatus(existing.room_id, "available");
       }
-    } else if (roomChanged) {
-      await this.rooms.changeStatus(existing.room_id, "available");
-      await this.syncRoomStatus(ctx, session, room.id, newStatus, updated.id);
+    } else if (roomChanged || datesChanged) {
+      if (roomChanged) {
+        await this.rooms.changeStatus(existing.room_id, "available");
+      }
+      await this.syncRoomStatus(
+        ctx,
+        session,
+        room.id,
+        newStatus,
+        updated.id,
+        values.checkInDate
+      );
       await this.log(ctx, session, {
         action: `Updated reservation ${updated.reservation_number}`,
         actionCode: ActivityActionCodes.RESERVATION_UPDATED,
         entityId: updated.id,
-        metadata: { room_changed: true },
+        metadata: {
+          room_changed: roomChanged,
+          dates_changed: datesChanged,
+        },
       });
     } else {
       await this.log(ctx, session, {
@@ -1421,6 +1547,10 @@ export class ReservationService implements IReservationService {
         entityId: updated.id,
       });
     }
+
+    await this.reconcileArrivalLifecycle(ctx, session, {
+      trigger: "reservation_update",
+    });
 
     const detail = await this.reservations.getById(updated.id);
     if (!detail) {
@@ -1470,6 +1600,10 @@ export class ReservationService implements IReservationService {
       cancelled.id
     );
 
+    await this.reconcileArrivalLifecycle(ctx, session, {
+      trigger: "reservation_cancel",
+    });
+
     if (
       existing.status === "confirmed" ||
       existing.status === "pending"
@@ -1482,6 +1616,82 @@ export class ReservationService implements IReservationService {
       throw new ServiceError("Failed to load cancelled reservation.", "INTERNAL", 500);
     }
     return mapDbReservationToReservation(detail);
+  }
+
+  /**
+   * Single authoritative arrival lifecycle reconcile against Business Date.
+   * Idempotent: only updates rooms whose physical status diverges from
+   * roomStatusForReservation() for confirmed stays.
+   */
+  async syncArrivalRoomStatusesForBusinessDate(
+    ctx: ServiceContext,
+    session: AuthSession,
+    businessDate: string,
+    trigger: string = "business_date_arrival"
+  ): Promise<{ reserved: number; released: number }> {
+    const rows = await this.reservations.getAll();
+    const confirmed = rows.filter((r) => r.status === "confirmed");
+
+    let reserved = 0;
+    let released = 0;
+
+    for (const row of confirmed) {
+      const target = this.roomStatusForReservation("confirmed", {
+        checkInDate: row.check_in_date,
+        businessDate,
+      });
+      if (!target) continue;
+
+      const room = await this.rooms.getById(row.room_id);
+      if (!room) continue;
+      if (room.status === target) continue;
+      if (!this.canApplyConfirmedRoomStatus(room.status, target)) continue;
+
+      await this.rooms.changeStatus(row.room_id, target);
+      await this.activityLogs.create({
+        userId: ctx.userId || undefined,
+        userName: session.fullName,
+        action: `Room ${room.room_number} status ${room.status} → ${target} (arrival lifecycle reconcile)`,
+        actionCode: ActivityActionCodes.ROOM_STATUS_CHANGED,
+        module: "rooms",
+        entityType: "room",
+        entityId: row.room_id,
+        metadata: {
+          reservation_id: row.id,
+          previous_status: room.status,
+          new_status: target,
+          check_in_date: row.check_in_date,
+          business_date: businessDate,
+          trigger,
+          note: "Reservation Arrival Lifecycle — physical inventory only",
+        },
+      });
+
+      if (target === "reserved") reserved += 1;
+      else released += 1;
+    }
+
+    return { reserved, released };
+  }
+
+  /**
+   * Reconcile all confirmed reservations for the current (or given) Business Date.
+   * Shared entry point for create/update/cancel/confirm/check-in/Night Audit.
+   */
+  async reconcileArrivalLifecycle(
+    ctx: ServiceContext,
+    session: AuthSession,
+    options?: { businessDate?: string; trigger?: string }
+  ): Promise<{ reserved: number; released: number; businessDate: string }> {
+    const businessDate =
+      options?.businessDate ?? (await getCurrentBusinessDate());
+    const result = await this.syncArrivalRoomStatusesForBusinessDate(
+      ctx,
+      session,
+      businessDate,
+      options?.trigger ?? "reconcile"
+    );
+    return { ...result, businessDate };
   }
 
   async listPendingCheckIns(
@@ -1601,6 +1811,10 @@ export class ReservationService implements IReservationService {
       updated,
       row.room_id
     );
+
+    await this.reconcileArrivalLifecycle(ctx, session, {
+      trigger: "reservation_check_in",
+    });
 
     const detail = await this.reservations.getById(updated.id);
     if (!detail) {

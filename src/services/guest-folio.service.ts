@@ -154,6 +154,7 @@ export interface IGuestFolioService {
     reservationId: string
   ): Promise<AuthoritativeSettlement | null>;
   syncReservationSettlement(reservationId: string): Promise<void>;
+  listSourceReferencesForReservation(reservationId: string): Promise<string[]>;
   integratePaymentRefund(
     ctx: ServiceContext,
     session: AuthSession,
@@ -308,6 +309,16 @@ export class GuestFolioService implements IGuestFolioService {
         });
       }
     }
+  }
+
+  async listSourceReferencesForReservation(
+    reservationId: string
+  ): Promise<string[]> {
+    const folio = await this.folios.getByReservationId(reservationId);
+    if (!folio?.entries) return [];
+    return folio.entries
+      .map((entry) => entry.source_reference)
+      .filter((ref): ref is string => Boolean(ref));
   }
 
   private require(

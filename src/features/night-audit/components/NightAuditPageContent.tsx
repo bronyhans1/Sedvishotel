@@ -66,6 +66,11 @@ export function NightAuditPageContent({
     notes?: string;
     varianceNotes?: string;
     overstayAcknowledged?: boolean;
+    managerOverride?: boolean;
+    overrideReason?: string;
+    closeClassification?: import("@/lib/night-audit/audit-window").NightAuditCloseClassification;
+    closeWallClock?: string;
+    delayMinutes?: number;
   }) {
     if (!currentAudit) return;
     setConfirmOpen(false);
@@ -203,6 +208,8 @@ export function NightAuditPageContent({
           confirmLabel="Close Current Business Day"
           loading={isPending}
           overstayWarning={overstayWarning}
+          timing={commandCenter?.timing ?? null}
+          canManagerOverride={access.canManagerOverride}
           onConfirm={runNightAudit}
         />
       ) : null}

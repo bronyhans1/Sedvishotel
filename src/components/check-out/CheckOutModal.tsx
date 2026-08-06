@@ -39,6 +39,9 @@ import {
   type TransactionPaymentMethod,
 } from "@/types/payment";
 import type { Reservation } from "@/types/reservation";
+import type { OverstayCheckoutValidation } from "@/types/overstay-checkout";
+import { OverstayCheckoutPanel } from "@/components/check-out/OverstayCheckoutPanel";
+import { recoverOverstayChargeAction } from "@/features/check-out/actions";
 
 type Props = {
   reservation: Reservation | null;
@@ -50,6 +53,11 @@ type Props = {
   canOverrideVat: boolean;
   canRecordPayment: boolean;
   folioSettlement?: AuthoritativeSettlement;
+  /** Overstay validation — present when opening from Process Overstay Check-Out. */
+  overstayValidation?: OverstayCheckoutValidation | null;
+  canManageOverstay?: boolean;
+  businessDate?: string;
+  onOverstayStateChange?: () => void;
 };
 
 const selectClass =
@@ -65,6 +73,10 @@ export function CheckOutModal({
   canOverrideVat,
   canRecordPayment,
   folioSettlement,
+  overstayValidation = null,
+  canManageOverstay = false,
+  businessDate,
+  onOverstayStateChange,
 }: Props) {
   const toast = useToast();
   const refresh = useLiveRefresh();
@@ -80,6 +92,11 @@ export function CheckOutModal({
   const [paymentMethod, setPaymentMethod] =
     useState<TransactionPaymentMethod>("cash");
   const idempotencyKeyRef = useRef("");
+  const [localOverstayValidation, setLocalOverstayValidation] =
+    useState<OverstayCheckoutValidation | null>(null);
+  const [recovering, setRecovering] = useState(false);
+
+  const activeOverstayValidation = localOverstayValidation ?? overstayValidation;
 
   useEffect(() => {
     if (!open) return;
@@ -90,7 +107,8 @@ export function CheckOutModal({
     setPaymentMethod("cash");
     setPaymentAmount(0);
     setError("");
-  }, [open, reservation?.id, defaultVatApplied]);
+    setLocalOverstayValidation(overstayValidation ?? null);
+  }, [open, reservation?.id, defaultVatApplied, overstayValidation]);
 
   useEffect(() => {
     if (!open || !reservation?.id) {
@@ -145,6 +163,17 @@ export function CheckOutModal({
   function handleCheckOut() {
     if (!reservation || !settlement) return;
     setError("");
+
+    if (
+      activeOverstayValidation?.isOverstay &&
+      !activeOverstayValidation.checkoutAllowed
+    ) {
+      setError(
+        activeOverstayValidation.checkoutBlockedReason ??
+          "Overstay checkout is blocked until manager approval."
+      );
+      return;
+    }
 
     const outstanding = settlement.outstandingBalance;
     const needsPayment = outstanding > 0;
@@ -220,12 +249,45 @@ export function CheckOutModal({
   if (!reservation || !settlement) return null;
 
   const needsPayment = settlement.outstandingBalance > 0;
+  const checkoutDisabled =
+    isPending ||
+    recovering ||
+    (activeOverstayValidation?.isOverstay === true &&
+      !activeOverstayValidation.checkoutAllowed);
+
+  function handleRecover() {
+    if (!reservation?.id || !businessDate) return;
+    setRecovering(true);
+    setError("");
+    startTransition(async () => {
+      const result = await recoverOverstayChargeAction(
+        reservation.id,
+        businessDate
+      );
+      setRecovering(false);
+      if (!result.success) {
+        setError(result.error);
+        toast.error(result.error);
+        return;
+      }
+      setLocalOverstayValidation(result.validation);
+      toast.celebrate(
+        "Recovery Evaluation Complete",
+        "Overstay charge state has been refreshed."
+      );
+      onOverstayStateChange?.();
+    });
+  }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Guest Check-Out</DialogTitle>
+          <DialogTitle>
+            {activeOverstayValidation?.isOverstay
+              ? "Overstay Check-Out"
+              : "Guest Check-Out"}
+          </DialogTitle>
           <DialogDescription>
             Room {reservation.roomNumber} · {reservation.guestName}
           </DialogDescription>
@@ -244,6 +306,16 @@ export function CheckOutModal({
             {reservation.numberOfNights} nights
           </p>
         </div>
+
+        {activeOverstayValidation?.isOverstay ? (
+          <OverstayCheckoutPanel
+            validation={activeOverstayValidation}
+            outstandingBalance={settlement.outstandingBalance}
+            canManageOverstay={canManageOverstay}
+            onRecover={handleRecover}
+            recovering={recovering}
+          />
+        ) : null}
 
         <PaymentChargeSummary
           settlement={settlement}
@@ -358,7 +430,7 @@ export function CheckOutModal({
             </div>
           ) : null}
           <div className="flex justify-end gap-2">
-          <Button onClick={handleCheckOut} disabled={isPending}>
+          <Button onClick={handleCheckOut} disabled={checkoutDisabled}>
             {isPending ? "Processing…" : "Complete Check-Out"}
           </Button>
           </div>

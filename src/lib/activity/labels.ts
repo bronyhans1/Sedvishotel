@@ -46,6 +46,8 @@ const ACTION_LABEL_OVERRIDES: Record<string, string> = {
   [ActivityActionCodes.RESERVATION_OVERSTAY_WAIVED]: "Overstay charge waived",
   [ActivityActionCodes.RESERVATION_OVERSTAY_EVALUATED]:
     "Overstay evaluation completed",
+  [ActivityActionCodes.RESERVATION_OVERSTAY_RECOVERY_EVALUATED]:
+    "Overstay recovery evaluation",
   [ActivityActionCodes.BUSINESS_DAY_LOCK_DENIED]:
     "Business day lock denied operation",
   [ActivityActionCodes.CORRECTION_SESSION_OPENED]: "Correction session opened",

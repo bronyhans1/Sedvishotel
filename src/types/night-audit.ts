@@ -135,4 +135,10 @@ export type CloseNightAuditInput = {
   varianceNotes?: string;
   /** Required when Hotel Policy overstayNightAuditMode is acknowledge / require_manager. */
   overstayAcknowledged?: boolean;
+  /** Enterprise Operational Governance */
+  closeClassification?: import("@/lib/night-audit/audit-window").NightAuditCloseClassification;
+  closeWallClock?: string;
+  delayMinutes?: number;
+  managerOverride?: boolean;
+  overrideReason?: string;
 };

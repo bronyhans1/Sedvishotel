@@ -23,23 +23,21 @@ export function resolveEffectiveTotalDue(
   return computeInvoiceTotal(chargeBase, vatApplied, vatRate);
 }
 
-export function resolvePaymentTransactionVat(
+export type StayVatOverrideValues = {
+  vatApplied?: boolean;
+  vatExemptionReason?: string | null;
+  vatExemptionNotes?: string | null;
+};
+
+/**
+ * Resolves VAT Applied / Exempt for stay pricing (reservations), reusing the same
+ * permission and exemption-reason rules as payment / walk-in / POS.
+ */
+export function resolveStayVatApplied(
   session: AuthSession,
-  ctx: ServiceContext,
-  values: PaymentFormValues,
-  defaultVatRate: number,
-  chargeBase: number,
-  now: string
-): Pick<
-  CreatePaymentTransactionInput,
-  | "vat_applied"
-  | "vat_rate"
-  | "vat_amount"
-  | "vat_exemption_reason"
-  | "vat_exemption_notes"
-  | "vat_overridden_by"
-  | "vat_overridden_at"
-> & { vatOverridden: boolean } {
+  values: StayVatOverrideValues,
+  defaultVatRate: number
+): { vatApplied: boolean; vatOverridden: boolean } {
   const access = getPaymentAccess(session);
   const globalVatEnabled = defaultVatRate > 0;
   let vatApplied = globalVatEnabled;
@@ -68,6 +66,52 @@ export function resolvePaymentTransactionVat(
     }
   }
 
+  return {
+    vatApplied,
+    vatOverridden: globalVatEnabled && !vatApplied,
+  };
+}
+
+/** Zero taxes on a stay pricing result while keeping service charge (reservation parity). */
+export function applyStayVatExemption<
+  T extends {
+    subtotal: number;
+    taxes: number;
+    serviceCharge: number;
+    totalAmount: number;
+  },
+>(financials: T, vatApplied: boolean): T {
+  if (vatApplied) return financials;
+  return {
+    ...financials,
+    taxes: 0,
+    totalAmount: roundCurrency(financials.subtotal + financials.serviceCharge),
+  };
+}
+
+export function resolvePaymentTransactionVat(
+  session: AuthSession,
+  ctx: ServiceContext,
+  values: PaymentFormValues,
+  defaultVatRate: number,
+  chargeBase: number,
+  now: string
+): Pick<
+  CreatePaymentTransactionInput,
+  | "vat_applied"
+  | "vat_rate"
+  | "vat_amount"
+  | "vat_exemption_reason"
+  | "vat_exemption_notes"
+  | "vat_overridden_by"
+  | "vat_overridden_at"
+> & { vatOverridden: boolean } {
+  const { vatApplied, vatOverridden } = resolveStayVatApplied(
+    session,
+    values,
+    defaultVatRate
+  );
+
   const vatRate = vatApplied ? defaultVatRate : 0;
   const { vatAmount } = computeTransactionVatFields(
     values.amount,
@@ -75,7 +119,6 @@ export function resolvePaymentTransactionVat(
     vatRate,
     chargeBase
   );
-  const vatOverridden = globalVatEnabled && !vatApplied;
 
   return {
     vat_applied: vatApplied,
