@@ -156,22 +156,16 @@ export class BusinessDateService implements IBusinessDateService {
       notes: `Advanced from ${input.closedBusinessDate} after night audit close.`,
     });
 
-    if (this.activityLogs) {
-      await this.activityLogs.create({
-        userId: ctx.userId,
-        userName: session.fullName,
-        action: `Advanced business date to ${nextDate}`,
-        actionCode: ActivityActionCodes.BUSINESS_DATE_ADVANCED,
-        module: "night_audit",
-        entityType: "hotel_operating_day",
-        entityId: String(updated.id),
-        metadata: {
-          previous_business_date: input.closedBusinessDate,
-          current_business_date: nextDate,
-          night_audit_id: input.nightAuditId,
-        },
-      });
-    }
+    await this.safeLogBusinessDate(ctx, session, {
+      action: `Advanced business date to ${nextDate}`,
+      actionCode: ActivityActionCodes.BUSINESS_DATE_ADVANCED,
+      metadata: {
+        previous_business_date: input.closedBusinessDate,
+        current_business_date: nextDate,
+        operating_day_id: updated.id,
+        night_audit_id: input.nightAuditId,
+      },
+    });
 
     return {
       advanced: true,
@@ -214,28 +208,58 @@ export class BusinessDateService implements IBusinessDateService {
       notes: `Business date reopened to ${input.auditDate}. ${input.reason}`.trim(),
     });
 
-    if (this.activityLogs) {
-      await this.activityLogs.create({
-        userId: ctx.userId,
-        userName: session.fullName,
-        action: `Reopened business date ${input.auditDate}`,
-        actionCode: ActivityActionCodes.BUSINESS_DATE_REOPENED,
-        module: "night_audit",
-        entityType: "hotel_operating_day",
-        entityId: String(updated.id),
-        metadata: {
-          previous_business_date: expectedCurrent,
-          current_business_date: input.auditDate,
-          night_audit_id: input.nightAuditId,
-          reason: input.reason,
-        },
-      });
-    }
+    await this.safeLogBusinessDate(ctx, session, {
+      action: `Reopened business date ${input.auditDate}`,
+      actionCode: ActivityActionCodes.BUSINESS_DATE_REOPENED,
+      metadata: {
+        previous_business_date: expectedCurrent,
+        current_business_date: input.auditDate,
+        operating_day_id: updated.id,
+        night_audit_id: input.nightAuditId,
+        reason: input.reason,
+      },
+    });
 
     return {
       advanced: true,
       previousBusinessDate: expectedCurrent,
       currentBusinessDate: input.auditDate,
     };
+  }
+
+  /**
+   * Business Date events use entity_id = null because hotel_operating_day.id
+   * is a SMALLINT singleton (always 1), not a UUID. Context lives in metadata.
+   * Logging failures must never undo an authoritative Business Date change.
+   */
+  private async safeLogBusinessDate(
+    ctx: ServiceContext,
+    session: AuthSession,
+    input: {
+      action: string;
+      actionCode: string;
+      metadata: Record<string, unknown>;
+    }
+  ): Promise<void> {
+    if (!this.activityLogs) return;
+    try {
+      await this.activityLogs.create({
+        userId: ctx.userId,
+        userName: session.fullName,
+        action: input.action,
+        actionCode: input.actionCode,
+        module: "night_audit",
+        entityType: "hotel_operating_day",
+        entityId: null,
+        metadata: input.metadata,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(
+        "[BusinessDate] Activity log write failed (operational change preserved):",
+        message,
+        input.metadata
+      );
+    }
   }
 }

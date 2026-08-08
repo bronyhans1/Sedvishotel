@@ -24,7 +24,8 @@ export interface CreateActivityLogInput {
   actionCode: ActivityActionCode | string;
   module: string;
   entityType?: string;
-  entityId?: string;
+  /** UUID entity when applicable; null for singleton / non-UUID authorities (e.g. hotel_operating_day). */
+  entityId?: string | null;
   ipAddress?: string;
   status?: DbActivityLogStatus;
   metadata?: Record<string, unknown>;

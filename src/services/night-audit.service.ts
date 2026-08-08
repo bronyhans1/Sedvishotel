@@ -156,6 +156,10 @@ export class NightAuditService implements INightAuditService {
     return mapDbNightAuditToNightAudit(row, userNames, shift);
   }
 
+  /**
+   * Activity Log is an audit trail only. Failures must never fail Night Audit
+   * or block Business Date / arrival / overstay operational processing.
+   */
   private async log(
     ctx: ServiceContext,
     session: AuthSession,
@@ -166,16 +170,29 @@ export class NightAuditService implements INightAuditService {
       metadata?: Record<string, unknown>;
     }
   ): Promise<void> {
-    await this.activityLogs.create({
-      userId: ctx.userId,
-      userName: session.fullName,
-      action: input.action,
-      actionCode: input.actionCode,
-      module: "night_audit",
-      entityType: "night_audit",
-      entityId: input.entityId,
-      metadata: input.metadata,
-    });
+    try {
+      await this.activityLogs.create({
+        userId: ctx.userId,
+        userName: session.fullName,
+        action: input.action,
+        actionCode: input.actionCode,
+        module: "night_audit",
+        entityType: "night_audit",
+        entityId: input.entityId,
+        metadata: input.metadata,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(
+        "[NightAudit] Activity log write failed (operational close/reopen preserved):",
+        message,
+        {
+          actionCode: input.actionCode,
+          entityId: input.entityId,
+          metadata: input.metadata,
+        }
+      );
+    }
   }
 
   private snapshotDeps() {
@@ -521,6 +538,35 @@ export class NightAuditService implements INightAuditService {
       notes,
     });
 
+    // Operational priority: Business Date → Arrival Lifecycle → Overstay → then Activity Log.
+    // Activity Log failures must not interrupt already-authoritative operational processing.
+    if (isCurrentBusinessDay) {
+      await this.businessDates.advanceAfterNightAudit(ctx, session, {
+        closedBusinessDate: input.auditDate,
+        nightAuditId: updated.id,
+      });
+
+      const nextBusinessDate =
+        await this.businessDates.getCurrentBusinessDate();
+
+      if (this.arrivalRoomSync) {
+        await this.arrivalRoomSync.syncArrivalRoomStatusesForBusinessDate(
+          ctx,
+          session,
+          nextBusinessDate,
+          "night_audit_business_date_advance"
+        );
+      }
+
+      if (this.overstays) {
+        await this.overstays.processBusinessDateCharges(
+          ctx,
+          session,
+          nextBusinessDate
+        );
+      }
+    }
+
     await this.log(ctx, session, {
       action: isReclose
         ? `Re-closed night audit ${updated.night_audit_number} (revision ${nextRevision})`
@@ -566,33 +612,6 @@ export class NightAuditService implements INightAuditService {
         variance: cashVariance,
       },
     });
-
-    if (isCurrentBusinessDay) {
-      await this.businessDates.advanceAfterNightAudit(ctx, session, {
-        closedBusinessDate: input.auditDate,
-        nightAuditId: updated.id,
-      });
-
-      const nextBusinessDate =
-        await this.businessDates.getCurrentBusinessDate();
-
-      if (this.arrivalRoomSync) {
-        await this.arrivalRoomSync.syncArrivalRoomStatusesForBusinessDate(
-          ctx,
-          session,
-          nextBusinessDate,
-          "night_audit_business_date_advance"
-        );
-      }
-
-      if (this.overstays) {
-        await this.overstays.processBusinessDateCharges(
-          ctx,
-          session,
-          nextBusinessDate
-        );
-      }
-    }
 
     const mapped = await this.mapRow(updated);
     if (!mapped) {
@@ -677,6 +696,13 @@ export class NightAuditService implements INightAuditService {
       notes: null,
     } satisfies Omit<DbNightAuditRevision, "id" | "created_at">);
 
+    // Operational rollback first; Activity Log is non-blocking and runs after.
+    await this.businessDates.reopenBusinessDate(ctx, session, {
+      auditDate: row.audit_date,
+      nightAuditId: updated.id,
+      reason: trimmedReason,
+    });
+
     await this.log(ctx, session, {
       action: `Reopened night audit ${row.night_audit_number}`,
       actionCode: ActivityActionCodes.NIGHT_AUDIT_REOPENED,
@@ -688,12 +714,6 @@ export class NightAuditService implements INightAuditService {
         reason: trimmedReason,
         reopened_by: ctx.userId,
       },
-    });
-
-    await this.businessDates.reopenBusinessDate(ctx, session, {
-      auditDate: row.audit_date,
-      nightAuditId: updated.id,
-      reason: trimmedReason,
     });
 
     const mapped = await this.mapRow(updated);
