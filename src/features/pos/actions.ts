@@ -13,6 +13,7 @@ import type { PosSaleListFilters } from "@/repositories/pos.repository";
 import { POS_SALE_HISTORY_PAGE_SIZE } from "@/types/pos";
 
 const POS_PATH = "/dashboard/pos";
+const POS_REGISTER_PATH = "/dashboard/pos/register";
 const POS_HISTORY_PATH = "/dashboard/pos/history";
 
 export type PosActionResult =
@@ -30,6 +31,7 @@ function toActionResult(err: unknown): PosActionResult {
 
 function revalidatePosPaths() {
   revalidatePath(POS_PATH);
+  revalidatePath(POS_REGISTER_PATH);
   revalidatePath(POS_HISTORY_PATH);
   revalidatePath("/dashboard/inventory/stock");
   revalidatePath("/dashboard/inventory/products");

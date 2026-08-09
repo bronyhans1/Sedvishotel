@@ -10,6 +10,10 @@
  *   public/images/backgrounds/
  *   public/images/rooms/
  *   public/images/corridors/
+ *
+ * Homepage cinematic slides + featured strip:
+ *   see `@/lib/public/homepage-images`
+ *   files under public/images/hero/ and public/images/featured/
  */
 
 export const publicImages = {
@@ -29,6 +33,9 @@ export const publicImages = {
     "standard-room-1": "/images/rooms/standard-room-1.jpg",
     "standard-room-2": "/images/rooms/standard-room-2.jpg",
     "standard-room-3": "/images/rooms/standard-room-3.jpg",
+    "standard-room-4": "/images/rooms/standard-room-4.jpg",
+    "standard-room-5": "/images/rooms/standard-room-5.jpg",
+    "standard-room-6": "/images/rooms/standard-room-6.jpg",
     "deluxe-room-1": "/images/rooms/deluxe-room-1.jpg",
     "deluxe-room-2": "/images/rooms/deluxe-room-2.jpg",
     "deluxe-room-3": "/images/rooms/deluxe-room-3.jpg",

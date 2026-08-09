@@ -31,6 +31,8 @@ import type { ProductCategoryOption } from "@/types/product";
 const selectClass =
   "h-9 w-full min-w-[140px] rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:w-auto";
 
+type StockFilter = "all" | "low_stock" | "out_of_stock";
+
 type StockPageContentProps = {
   stats: InventoryStats;
   movements: StockMovement[];
@@ -38,9 +40,8 @@ type StockPageContentProps = {
   products: Product[];
   productOptions: ProductCategoryOption[];
   access: InventoryAccess;
+  initialStockFilter?: StockFilter;
 };
-
-type StockFilter = "all" | "low_stock" | "out_of_stock";
 
 export function StockPageContent({
   stats,
@@ -48,11 +49,12 @@ export function StockPageContent({
   recentMovements,
   products,
   productOptions,
+  initialStockFilter = "all",
 }: StockPageContentProps) {
   const [search, setSearch] = useState("");
   const [movementType, setMovementType] = useState<StockMovementTypeFilter>("all");
   const [productId, setProductId] = useState("");
-  const [stockFilter, setStockFilter] = useState<StockFilter>("all");
+  const [stockFilter, setStockFilter] = useState<StockFilter>(initialStockFilter);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [sortKey, setSortKey] = useState<StockMovementSortKey>("createdAt");

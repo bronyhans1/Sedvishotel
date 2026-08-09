@@ -1,7 +1,11 @@
+import { getCalendarDateString } from "@/lib/dates/today";
 import { getCurrentTimeString } from "@/lib/dates/time";
 import {
+  assessCompletedAuditTiming,
   buildCountdownState,
   classifyNightAuditTiming,
+  formatDelayMinutes,
+  resolveNightAuditSchedule,
 } from "@/lib/night-audit/audit-window";
 import { buildNightAuditCloseReadiness } from "@/lib/night-audit/close-readiness";
 import {
@@ -23,21 +27,45 @@ import type { NightAudit } from "@/types/night-audit";
 import type { NightAuditCommandCenter } from "@/types/operational-integrity";
 import { getOverstayService } from "@/lib/overstay/get-overstay-service";
 
-function reminderMessageForStage(
-  stage: 0 | 1 | 2 | 3 | 4 | 5,
-  recommendedClose: string
-): string | null {
-  switch (stage) {
-    case 1:
-      return `Night Audit window is approaching. Please complete outstanding front desk activities. Recommended audit time: ${recommendedClose}.`;
-    case 2:
-      return `Approaching recommended Night Audit (${recommendedClose}). Review pending departures, cash count, and operational readiness.`;
-    case 3:
-      return `Night Audit is now due (${recommendedClose}). Review the Operations Command Center and run Night Audit when ready.`;
-    case 4:
-      return `Night Audit is overdue past the recommended time. Please complete Night Audit or contact the Duty Manager if activities are still in progress.`;
-    case 5:
-      return `Critical: Night Audit is late or past morning warning. Close the Business Date when ready — the hotel is never blocked.`;
+function formatLongDate(dateStr: string): string {
+  const date = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return dateStr;
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(date);
+}
+
+function formatShortDate(dateStr: string): string {
+  const date = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return dateStr;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function reminderMessageForUx(input: {
+  uxStatus: NightAuditCommandCenter["timing"]["uxStatus"];
+  businessDate: string;
+  scheduleDate: string;
+  recommendedClose: string;
+  dayClosed: boolean;
+}): string | null {
+  if (input.dayClosed) return null;
+  const bd = formatLongDate(input.businessDate);
+  const next = `${formatLongDate(input.scheduleDate)} at ${input.recommendedClose}`;
+
+  switch (input.uxStatus) {
+    case "scheduled":
+      return `The hotel is operating on Business Date ${bd}. The next Night Audit is scheduled for ${next}.`;
+    case "due":
+      return `Night Audit is now due. Review the readiness checklist and close Business Date ${bd} when ready.`;
+    case "overdue":
+      return `Night Audit for Business Date ${bd} is overdue. Review the readiness checklist and close the Business Date when ready.`;
+    case "critical":
+      return `Night Audit for Business Date ${bd} is critically overdue. Management attention is recommended. The hotel is never blocked.`;
     default:
       return null;
   }
@@ -46,6 +74,8 @@ function reminderMessageForStage(
 export async function buildNightAuditCommandCenter(input: {
   businessDate: string;
   currentAudit: NightAudit | null;
+  /** Most recent closed audit (for last-audit card). */
+  lastClosedAudit?: NightAudit | null;
   reservations: IReservationRepository;
   rooms: IRoomRepository;
   activityLogs: IActivityLogRepository;
@@ -128,8 +158,25 @@ export async function buildNightAuditCommandCenter(input: {
       : null;
 
   const nightAuditOpen = input.currentAudit?.status === "open";
-  const timing = classifyNightAuditTiming(wallClock, auditWindow);
-  const countdown = buildCountdownState(wallClock, auditWindow, dayClosed);
+  const calendarDate = getCalendarDateString();
+  const timingContext = {
+    businessDate: input.businessDate,
+    calendarDate,
+  };
+  const timing = classifyNightAuditTiming(
+    wallClock,
+    auditWindow,
+    timingContext
+  );
+  const countdown = buildCountdownState(
+    wallClock,
+    auditWindow,
+    dayClosed,
+    timingContext
+  );
+  const schedule =
+    timing.schedule ??
+    resolveNightAuditSchedule(input.businessDate, auditWindow);
 
   const unbalancedShift = Boolean(
     openShift &&
@@ -155,6 +202,7 @@ export async function buildNightAuditCommandCenter(input: {
     timing,
     window: auditWindow,
     dayClosed,
+    closingBusinessDate: input.businessDate,
   });
 
   const health = deriveBusinessDayHealth({
@@ -201,9 +249,34 @@ export async function buildNightAuditCommandCenter(input: {
 
   const reminderStage = nightAuditOpen && !dayClosed ? timing.reminderStage : 0;
 
+  const lastClosed = input.lastClosedAudit ?? null;
+  let lastCompletedAudit: NightAuditCommandCenter["lastCompletedAudit"] = null;
+  if (lastClosed?.status === "closed" && lastClosed.closedAt) {
+    const completed = assessCompletedAuditTiming(
+      lastClosed.auditDate,
+      lastClosed.closedAt,
+      auditWindow
+    );
+    lastCompletedAudit = {
+      businessDate: lastClosed.auditDate,
+      auditNumber: lastClosed.auditNumber,
+      closedAt: lastClosed.closedAt,
+      completedLate: completed.completedLate,
+      delayMinutes: completed.delayMinutes,
+      delayLabel: completed.completedLate
+        ? formatDelayMinutes(completed.delayMinutes)
+        : null,
+      scheduledCalendarDate: completed.scheduledCalendarDate,
+      scheduledTime: completed.scheduledTime,
+    };
+  }
+
+  const businessDayStatus = dayClosed ? "closed" : "open";
+  const nextAuditUx = dayClosed ? "closed" : timing.uxStatus;
+
   return {
     businessDate: input.businessDate,
-    businessDayStatus: dayClosed ? "closed" : "open",
+    businessDayStatus,
     nightAuditStatus: input.currentAudit
       ? input.currentAudit.status
       : "none",
@@ -217,14 +290,39 @@ export async function buildNightAuditCommandCenter(input: {
     openHousekeepingIssues,
     timeline,
     wallClock,
+    calendarDate,
     auditWindow,
     timing,
     countdown,
     readiness,
     reminderStage,
-    reminderMessage: reminderMessageForStage(
-      reminderStage,
-      auditWindow.recommendedClose
-    ),
+    reminderMessage: reminderMessageForUx({
+      uxStatus: nextAuditUx,
+      businessDate: input.businessDate,
+      scheduleDate: schedule.scheduledCalendarDate,
+      recommendedClose: auditWindow.recommendedClose,
+      dayClosed,
+    }),
+    lastCompletedAudit,
+    nextAudit: {
+      closesBusinessDate: input.businessDate,
+      scheduledCalendarDate: schedule.scheduledCalendarDate,
+      scheduledTime: auditWindow.recommendedClose,
+      uxStatus: nextAuditUx,
+      label:
+        nextAuditUx === "scheduled"
+          ? "Scheduled"
+          : nextAuditUx === "due"
+            ? "Due"
+            : nextAuditUx === "overdue"
+              ? "Overdue"
+              : nextAuditUx === "critical"
+                ? "Critical"
+                : "Closed",
+      summary:
+        nextAuditUx === "closed"
+          ? `Business Date ${formatShortDate(input.businessDate)} is closed`
+          : `Closes ${formatShortDate(input.businessDate)} · ${formatShortDate(schedule.scheduledCalendarDate)} · ${auditWindow.recommendedClose}`,
+    },
   };
 }

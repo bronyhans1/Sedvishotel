@@ -11,15 +11,28 @@ export const metadata: Metadata = {
   description: `Inventory stock movements for ${siteConfig.name}`,
 };
 
-async function StockPageLoader() {
+type Props = {
+  searchParams: Promise<{ filter?: string }>;
+};
+
+async function StockPageLoader({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>;
+}) {
+  const params = await searchParams;
   const data = await loadStockPageData();
-  return <StockPageContent {...data} />;
+  const filter =
+    params.filter === "low_stock" || params.filter === "out_of_stock"
+      ? params.filter
+      : "all";
+  return <StockPageContent {...data} initialStockFilter={filter} />;
 }
 
-export default function StockPage() {
+export default function StockPage({ searchParams }: Props) {
   return (
     <Suspense fallback={<StockPageSkeleton />}>
-      <StockPageLoader />
+      <StockPageLoader searchParams={searchParams} />
     </Suspense>
   );
 }

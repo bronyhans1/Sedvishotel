@@ -182,8 +182,13 @@ export const mainNavigation: NavItem[] = [
     permission: "pos",
     children: [
       {
-        title: "Register",
+        title: "Dashboard",
         href: "/dashboard/pos",
+        permission: "pos",
+      },
+      {
+        title: "Register",
+        href: "/dashboard/pos/register",
         permission: "pos",
       },
       {

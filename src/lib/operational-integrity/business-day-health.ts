@@ -77,16 +77,20 @@ export function deriveBusinessDayHealth(
     );
   }
   if (input.nightAuditPending) {
-    hit("Night Audit pending", 15, "attention");
+    if (
+      input.closeClassification === "on_time" ||
+      input.closeClassification === "late" ||
+      input.closeClassification === "overdue" ||
+      input.closeClassification === "early"
+    ) {
+      hit("Night Audit pending", 15, "attention");
+    }
   }
   if (input.closeClassification === "late") {
     hit("Night Audit late", 12, "attention");
   }
   if (input.closeClassification === "overdue") {
     hit("Night Audit overdue", 25, "action_required");
-  }
-  if (input.closeClassification === "too_early" && input.nightAuditPending) {
-    hit("Before Night Audit window", 5, "attention");
   }
   if (input.missingCashCount) {
     hit("Missing cash count", 15, "action_required");
@@ -144,11 +148,16 @@ export function deriveOperationalSmartWarnings(input: {
 }): OperationalSmartWarning[] {
   const warnings: OperationalSmartWarning[] = [];
 
-  if (input.nightAuditOpen && input.calendarHour >= input.warningHour) {
+  if (
+    input.nightAuditOpen &&
+    input.calendarHour >= input.warningHour &&
+    (input.closeClassification === "late" ||
+      input.closeClassification === "overdue")
+  ) {
     warnings.push({
       id: "bd-still-open",
       severity: "critical",
-      message: `Business Day ${input.businessDate} is still open after ${input.warningHour}:00.`,
+      message: `Business Day ${input.businessDate} is still open after ${input.warningHour}:00 — Night Audit for this Business Date is late.`,
       href: "/dashboard/night-audit",
     });
   }
@@ -196,9 +205,9 @@ export function deriveOperationalSmartWarnings(input: {
       });
     } else if (input.closeClassification === "too_early") {
       warnings.push({
-        id: "na-too-early",
-        severity: "medium",
-        message: `Before earliest Night Audit close. Manager override required to close now.`,
+        id: "na-scheduled",
+        severity: "low",
+        message: `Next Night Audit for Business Date ${input.businessDate} is scheduled (not due yet). Hotel remains fully operational.`,
         href: "/dashboard/night-audit",
       });
     } else {

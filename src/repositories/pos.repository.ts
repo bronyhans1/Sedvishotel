@@ -63,6 +63,10 @@ export interface IPosRepository {
   getById(id: string): Promise<DbSaleWithRelations | null>;
   listPaymentsForBusinessDate(businessDate: string): Promise<DbSalePayment[]>;
   listSalesForBusinessDate(businessDate: string): Promise<DbSale[]>;
+  /** Sales with line items + payments for Business Day dashboard aggregation. */
+  listSalesWithItemsForBusinessDate(
+    businessDate: string
+  ): Promise<DbSaleWithRelations[]>;
   findAll(
     filters?: PosSaleListFilters,
     pagination?: PaginationParams

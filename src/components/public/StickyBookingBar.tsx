@@ -8,8 +8,14 @@ import { PublicDateInput } from "@/components/public/PublicDateInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
-export function StickyBookingBar() {
+type Props = {
+  /** Homepage: float as glass card overlapping hero. */
+  floating?: boolean;
+};
+
+export function StickyBookingBar({ floating = false }: Props) {
   const router = useRouter();
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
@@ -33,8 +39,10 @@ export function StickyBookingBar() {
 
   const fields = (
     <>
-      <div className="min-w-0 space-y-1">
-        <Label className="text-xs text-muted-foreground">Check-In</Label>
+      <div className="min-w-0 space-y-1.5">
+        <Label className="text-[0.7rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          Check-In
+        </Label>
         <PublicDateInput
           value={checkIn}
           min={today}
@@ -42,8 +50,10 @@ export function StickyBookingBar() {
           required
         />
       </div>
-      <div className="min-w-0 space-y-1">
-        <Label className="text-xs text-muted-foreground">Check-Out</Label>
+      <div className="min-w-0 space-y-1.5">
+        <Label className="text-[0.7rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          Check-Out
+        </Label>
         <PublicDateInput
           value={checkOut}
           min={checkIn || today}
@@ -51,8 +61,10 @@ export function StickyBookingBar() {
           required
         />
       </div>
-      <div className="min-w-0 space-y-1">
-        <Label className="text-xs text-muted-foreground">Adults</Label>
+      <div className="min-w-0 space-y-1.5">
+        <Label className="text-[0.7rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          Adults
+        </Label>
         <div className="relative">
           <Users className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -66,8 +78,10 @@ export function StickyBookingBar() {
           />
         </div>
       </div>
-      <div className="min-w-0 space-y-1">
-        <Label className="text-xs text-muted-foreground">Children</Label>
+      <div className="min-w-0 space-y-1.5">
+        <Label className="text-[0.7rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          Children
+        </Label>
         <Input
           type="number"
           min={0}
@@ -82,24 +96,36 @@ export function StickyBookingBar() {
 
   return (
     <>
-      {/* Desktop sticky bar */}
-      <div className="sticky top-16 z-40 hidden border-b bg-card/95 shadow-md backdrop-blur-md lg:block">
+      {/* Desktop */}
+      <div
+        className={cn(
+          "z-40 hidden lg:block",
+          floating
+            ? "relative -mt-16 px-4 sm:px-6 lg:px-8"
+            : "sticky top-20 border-b bg-card/95 shadow-md backdrop-blur-md"
+        )}
+      >
         <form
           onSubmit={submit}
-          className="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px_100px_auto] items-end gap-4 px-6 py-4 lg:px-8"
+          className={cn(
+            "mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px_100px_auto] items-end gap-4",
+            floating
+              ? "public-booking-glass rounded-2xl border px-6 py-5 shadow-[0_24px_60px_-28px_rgba(12,24,45,0.55)]"
+              : "px-6 py-4 lg:px-8"
+          )}
         >
           {fields}
           <Button
             type="submit"
-            className="h-11 shrink-0 bg-brand-gold text-brand-navy hover:bg-brand-gold/90 public-btn-lift"
+            className="h-11 shrink-0 border border-brand-gold/30 bg-brand-gold text-brand-navy shadow-[0_10px_28px_-12px_rgba(201,162,39,0.55)] hover:bg-[#d4af37] public-btn-lift"
           >
             Check Availability
           </Button>
         </form>
       </div>
 
-      {/* Mobile drawer */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t bg-card shadow-2xl pb-[env(safe-area-inset-bottom,0px)] lg:hidden">
+      {/* Mobile drawer — unchanged booking flow */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t bg-card/95 shadow-2xl backdrop-blur-md pb-[env(safe-area-inset-bottom,0px)] lg:hidden">
         <button
           type="button"
           onClick={() => setMobileOpen(!mobileOpen)}
@@ -116,7 +142,10 @@ export function StickyBookingBar() {
             className="grid max-h-[min(70vh,28rem)] gap-3 overflow-y-auto border-t px-4 pb-4 pt-3"
           >
             {fields}
-            <Button type="submit" className="min-h-11 bg-brand-gold text-brand-navy">
+            <Button
+              type="submit"
+              className="min-h-11 bg-brand-gold text-brand-navy hover:bg-[#d4af37] public-btn-lift"
+            >
               Check Availability
             </Button>
           </form>

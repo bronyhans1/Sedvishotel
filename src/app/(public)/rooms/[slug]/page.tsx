@@ -8,9 +8,17 @@ import {
   getRelatedRooms,
   loadPublicRooms,
 } from "@/lib/public/load-public-rooms";
+import {
+  getRoomsPageGallery,
+  parseRoomsPageGalleryId,
+  ROOMS_PAGE_GALLERY_QUERY,
+} from "@/lib/public/rooms-page-images";
 import { buildPublicMetadata } from "@/lib/public-seo";
 
-type Props = { params: Promise<{ slug: string }> };
+type Props = {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
@@ -23,11 +31,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   });
 }
 
-export default async function RoomDetailPage({ params }: Props) {
+export default async function RoomDetailPage({ params, searchParams }: Props) {
   const { slug } = await params;
+  const query = await searchParams;
+  const galleryId = parseRoomsPageGalleryId(query[ROOMS_PAGE_GALLERY_QUERY]);
+
   const rooms = await loadPublicRooms();
   const room = getPublicRoomBySlug(rooms, slug);
   if (!room) notFound();
+
+  const galleryImages = getRoomsPageGallery(room.slug, galleryId);
+  const roomForDisplay = {
+    ...room,
+    images: galleryImages.length ? galleryImages : room.images,
+  };
 
   return (
     <>
@@ -36,7 +53,11 @@ export default async function RoomDetailPage({ params }: Props) {
         title={room.name}
         subtitle={room.description}
       />
-      <RoomDetailContent room={room} related={getRelatedRooms(rooms, slug)} catalogRooms={rooms} />
+      <RoomDetailContent
+        room={roomForDisplay}
+        related={getRelatedRooms(rooms, slug)}
+        catalogRooms={rooms}
+      />
     </>
   );
 }

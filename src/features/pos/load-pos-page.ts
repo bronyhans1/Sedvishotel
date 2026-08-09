@@ -4,6 +4,8 @@ import { ACCESS_DENIED_PATH } from "@/lib/auth/route-guard";
 import { getPaymentAccess } from "@/lib/auth/payment-access";
 import { getPosAccess } from "@/lib/auth/pos-access";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
+import { getPosDashboardService } from "@/lib/pos/get-pos-dashboard-service";
 import { getProductCategoryService } from "@/lib/product-categories/get-product-category-service";
 import { getProductService } from "@/lib/products/get-product-service";
 import { getReservationService } from "@/lib/reservations/get-reservation-service";
@@ -31,13 +33,16 @@ export async function loadPosPageData() {
   const reservationService = await getReservationService();
   const paymentAccess = getPaymentAccess(session);
   const defaultTaxRate = await getDefaultTaxRate();
+  const businessDate = await getCurrentBusinessDate();
+  const posDashboard = await getPosDashboardService();
 
-  const [products, categories, activeStays] = await Promise.all([
+  const [products, categories, activeStays, dayStrip] = await Promise.all([
     productService.list(ctx, session),
     categoryService.list(ctx, session),
     reservationService
       .listActiveStays(ctx, session)
       .catch((): ActiveStay[] => []),
+    posDashboard.getRegisterDayStrip(ctx, session, businessDate),
   ]);
 
   const categoryOptions: ProductCategoryOption[] = categories
@@ -52,5 +57,6 @@ export async function loadPosPageData() {
     defaultTaxRate,
     defaultVatApplied: isGlobalVatEnabled(defaultTaxRate),
     canOverrideVat: paymentAccess.canOverrideVat,
+    dayStrip,
   };
 }

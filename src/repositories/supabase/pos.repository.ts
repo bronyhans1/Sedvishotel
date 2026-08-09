@@ -196,6 +196,30 @@ export class SupabasePosRepository implements IPosRepository {
     return data ?? [];
   }
 
+  async listSalesWithItemsForBusinessDate(
+    businessDate: string
+  ): Promise<DbSaleWithRelations[]> {
+    const start = `${businessDate}T00:00:00.000Z`;
+    const end = `${businessDate}T23:59:59.999Z`;
+
+    const { data, error } = await this.client
+      .from("sales")
+      .select(SALE_SELECT)
+      .gte("created_at", start)
+      .lte("created_at", end)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      throw new Error(
+        `Failed to list POS sales with items: ${error.message}`
+      );
+    }
+
+    return (data as unknown as SaleRow[] | null)?.map((row) =>
+      toSaleWithRelations(row)
+    ).filter((row): row is DbSaleWithRelations => row != null) ?? [];
+  }
+
   private async findSaleIdsMatchingSearch(term: string): Promise<string[]> {
     const pattern = `%${term}%`;
     const ids = new Set<string>();

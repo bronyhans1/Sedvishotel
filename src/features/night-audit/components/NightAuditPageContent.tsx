@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { AlertTriangle, Moon, PlayCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -16,6 +16,8 @@ import { NightAuditStatusBadge } from "@/features/night-audit/components/NightAu
 import { NightAuditSummarySections } from "@/features/night-audit/components/NightAuditSummarySections";
 import { useToast } from "@/hooks/use-toast";
 import type { NightAuditAccess } from "@/lib/auth/night-audit-access.types";
+import { getCalendarDateString } from "@/lib/dates/today";
+import { classifyNightAuditTiming } from "@/lib/night-audit/audit-window";
 import {
   auditToDisplaySnapshot,
   formatAuditDateLabel,
@@ -50,11 +52,48 @@ export function NightAuditPageContent({
   const toast = useToast();
   const [isPending, startTransition] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [wallClock, setWallClock] = useState(
+    commandCenter?.wallClock ?? "00:00"
+  );
+
+  useEffect(() => {
+    if (commandCenter?.wallClock) setWallClock(commandCenter.wallClock);
+    const id = window.setInterval(() => {
+      const d = new Date();
+      setWallClock(
+        `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+      );
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [commandCenter?.wallClock]);
 
   const isBlocked = Boolean(blockedByOpenAudit);
   const isClosed = currentAudit?.status === "closed";
   const canCloseToday =
     access.canRunAudit && currentAudit?.status === "open" && !isBlocked;
+
+  const closeBusinessDateShort = currentAudit
+    ? (() => {
+        const d = new Date(`${currentAudit.auditDate}T12:00:00`);
+        return Number.isNaN(d.getTime())
+          ? currentAudit.auditDate
+          : new Intl.DateTimeFormat(undefined, {
+              month: "short",
+              day: "numeric",
+            }).format(d);
+      })()
+    : null;
+  const primaryCloseLabel = closeBusinessDateShort
+    ? `Run Night Audit · Close ${closeBusinessDateShort}`
+    : "Close Current Business Day";
+
+  const liveCloseTiming = useMemo(() => {
+    if (!commandCenter || !currentAudit) return commandCenter?.timing ?? null;
+    return classifyNightAuditTiming(wallClock, commandCenter.auditWindow, {
+      businessDate: currentAudit.auditDate,
+      calendarDate: getCalendarDateString(),
+    });
+  }, [commandCenter, currentAudit, wallClock]);
 
   const displaySnapshot =
     currentAudit && isClosed
@@ -99,7 +138,9 @@ export function NightAuditPageContent({
         canCloseToday ? (
           <Button size="sm" disabled={isPending} onClick={() => setConfirmOpen(true)}>
             <PlayCircle className="h-4 w-4" />
-            Close Current Business Day
+            <span className="max-w-[14rem] truncate sm:max-w-none">
+              {primaryCloseLabel}
+            </span>
           </Button>
         ) : undefined
       }
@@ -150,7 +191,7 @@ export function NightAuditPageContent({
             </div>
             <div className="text-right">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Audit Status
+                Day Status
               </p>
               <div className="mt-1">
                 <NightAuditStatusBadge status={currentAudit.status} />
@@ -170,10 +211,10 @@ export function NightAuditPageContent({
               </p>
             ) : (
               <p className="text-sm text-muted-foreground">
-              Live operational and financial data for the current business day.
-              Close the business day to lock the snapshot and advance the
-              operational date.
-            </p>
+                Operating on Business Date {formatAuditDateLabel(businessDate)}.
+                The next Night Audit will close this day — it is separate from any
+                audit you already completed for a previous Business Date.
+              </p>
             )}
           </CardContent>
         </Card>
@@ -205,10 +246,10 @@ export function NightAuditPageContent({
           expectedCash={liveSnapshot.cashTotal}
           auditDateLabel={formatAuditDateLabel(currentAudit.auditDate)}
           isReclose={currentAudit.revisionNumber > 0}
-          confirmLabel="Close Current Business Day"
+          confirmLabel={primaryCloseLabel}
           loading={isPending}
           overstayWarning={overstayWarning}
-          timing={commandCenter?.timing ?? null}
+          timing={liveCloseTiming}
           canManagerOverride={access.canManagerOverride}
           onConfirm={runNightAudit}
         />

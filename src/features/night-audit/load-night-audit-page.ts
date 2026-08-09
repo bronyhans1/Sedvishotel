@@ -52,11 +52,15 @@ export async function loadNightAuditPageData(): Promise<
     ? createAdminClient()
     : await createServerClient();
 
+  const lastClosedAudit =
+    history.find((a) => a.status === "closed" && a.closedAt) ?? null;
+
   let commandCenter: NightAuditPageData["commandCenter"] = null;
   try {
     commandCenter = await buildNightAuditCommandCenter({
       businessDate,
       currentAudit,
+      lastClosedAudit,
       reservations: new SupabaseReservationRepository(client),
       rooms: new SupabaseRoomRepository(client),
       activityLogs: new SupabaseActivityLogRepository(client),

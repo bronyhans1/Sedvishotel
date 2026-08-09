@@ -23,8 +23,11 @@ import {
   closeCorrectionSessionAction,
   openCorrectionSessionAction,
 } from "@/features/night-audit/actions";
-import { buildCountdownState } from "@/lib/night-audit/audit-window";
-import { classifyNightAuditTiming } from "@/lib/night-audit/audit-window";
+import {
+  buildCountdownState,
+  classifyNightAuditTiming,
+} from "@/lib/night-audit/audit-window";
+import { getCalendarDateString } from "@/lib/dates/today";
 import type { NightAuditCommandCenter } from "@/types/operational-integrity";
 import type { ReadinessTone } from "@/lib/night-audit/close-readiness";
 
@@ -68,6 +71,25 @@ const toneDot: Record<ReadinessTone, string> = {
   red: "text-red-600",
 };
 
+function formatLongDate(dateStr: string): string {
+  const date = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return dateStr;
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(date);
+}
+
+function formatShortDate(dateStr: string): string {
+  const date = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return dateStr;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
 type Props = {
   data: NightAuditCommandCenter;
   canManage: boolean;
@@ -95,20 +117,51 @@ export function NightAuditCommandCenterPanel({
     return () => window.clearInterval(id);
   }, [data.wallClock, data.businessDate]);
 
+  const timingContext = useMemo(
+    () => ({
+      businessDate: data.businessDate,
+      calendarDate: getCalendarDateString(),
+    }),
+    [data.businessDate, now]
+  );
+
   const liveCountdown = useMemo(
     () =>
       buildCountdownState(
         now,
         data.auditWindow,
-        data.businessDayStatus === "closed"
+        data.businessDayStatus === "closed",
+        timingContext
       ),
-    [now, data.auditWindow, data.businessDayStatus]
+    [now, data.auditWindow, data.businessDayStatus, timingContext]
   );
 
   const liveTiming = useMemo(
-    () => classifyNightAuditTiming(now, data.auditWindow),
-    [now, data.auditWindow]
+    () => classifyNightAuditTiming(now, data.auditWindow, timingContext),
+    [now, data.auditWindow, timingContext]
   );
+
+  const nextAuditLabel =
+    liveTiming.uxStatus === "scheduled"
+      ? "SCHEDULED"
+      : liveTiming.uxStatus === "due"
+        ? "DUE"
+        : liveTiming.uxStatus === "overdue"
+          ? "OVERDUE"
+          : liveTiming.uxStatus === "critical"
+            ? "CRITICAL"
+            : "CLOSED";
+
+  const timingPill =
+    liveTiming.uxStatus === "scheduled"
+      ? `Scheduled for ${formatShortDate(data.nextAudit.scheduledCalendarDate)} · ${data.auditWindow.recommendedClose}`
+      : liveTiming.uxStatus === "due"
+        ? `Due now · ${data.auditWindow.recommendedClose}`
+        : liveTiming.uxStatus === "overdue" || liveTiming.uxStatus === "critical"
+          ? liveTiming.delayMinutes > 0
+            ? `${Math.floor(liveTiming.delayMinutes / 60)}h ${liveTiming.delayMinutes % 60}m overdue`
+            : liveTiming.label
+          : liveTiming.label;
 
   function openCorrection() {
     const reason = window.prompt("Reason for Correction Session") ?? "";
@@ -156,8 +209,93 @@ export function NightAuditCommandCenterPanel({
     revenue: "Revenue",
   };
 
+  const assistantMessage =
+    data.businessDayStatus === "open"
+      ? liveTiming.uxStatus === "scheduled"
+        ? `The hotel is operating on Business Date ${formatLongDate(data.businessDate)}. The next Night Audit is scheduled for ${formatLongDate(data.nextAudit.scheduledCalendarDate)} at ${data.auditWindow.recommendedClose}.`
+        : liveTiming.uxStatus === "due"
+          ? `Night Audit is now due. Review the readiness checklist and close Business Date ${formatLongDate(data.businessDate)} when ready.`
+          : liveTiming.uxStatus === "overdue"
+            ? `Night Audit for Business Date ${formatLongDate(data.businessDate)} is overdue. Review the readiness checklist and close the Business Date when ready.`
+            : liveTiming.uxStatus === "critical"
+              ? `Night Audit for Business Date ${formatLongDate(data.businessDate)} is critically overdue. Management attention is recommended.`
+              : data.reminderMessage
+      : null;
+
   return (
     <div className="space-y-4">
+      {/* Operational timeline story */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        {data.lastCompletedAudit ? (
+          <Card>
+            <CardContent className="space-y-1 pt-5">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Last Night Audit
+              </p>
+              <p className="text-base font-semibold">
+                {formatLongDate(data.lastCompletedAudit.businessDate)}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Closed{" "}
+                {new Date(data.lastCompletedAudit.closedAt).toLocaleString(
+                  undefined,
+                  { dateStyle: "medium", timeStyle: "short" }
+                )}
+              </p>
+              <p className="text-sm font-medium">
+                {data.lastCompletedAudit.completedLate
+                  ? `Completed Late${data.lastCompletedAudit.delayLabel ? ` · ${data.lastCompletedAudit.delayLabel}` : ""}`
+                  : "Completed on time"}
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="space-y-1 pt-5">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Last Night Audit
+              </p>
+              <p className="text-base font-semibold">None yet</p>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="border-2 border-primary/30">
+          <CardContent className="space-y-1 pt-5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Current Business Day
+            </p>
+            <p className="text-base font-semibold">
+              {formatLongDate(data.businessDate)}
+            </p>
+            <p className="text-sm font-medium uppercase tracking-wide">
+              {data.businessDayStatus === "open" ? "OPEN" : "CLOSED"}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Wall clock {now}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="space-y-1 pt-5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Next Night Audit
+            </p>
+            <p className="text-base font-semibold">
+              {formatLongDate(data.nextAudit.scheduledCalendarDate)} ·{" "}
+              {data.auditWindow.recommendedClose}
+            </p>
+            <p className="text-sm font-medium uppercase tracking-wide">
+              {nextAuditLabel}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Closes Business Date {formatShortDate(data.businessDate)}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Hero: Can I Close Night Audit? */}
       <Card className={`border-2 ${verdictStyle[data.readiness.verdict]}`}>
         <CardContent className="space-y-3 pt-6">
@@ -165,9 +303,16 @@ export function NightAuditCommandCenterPanel({
             Can I Close Night Audit?
           </p>
           <p className="text-2xl font-semibold tracking-tight">
-            {verdictEmoji[data.readiness.verdict]} {data.readiness.headline}
+            {verdictEmoji[data.readiness.verdict]}{" "}
+            {liveTiming.uxStatus === "scheduled"
+              ? "NEXT AUDIT SCHEDULED"
+              : data.readiness.headline}
           </p>
-          <p className="text-sm text-muted-foreground">{data.readiness.summary}</p>
+          <p className="text-sm text-muted-foreground">
+            {liveTiming.uxStatus === "scheduled"
+              ? `Closing Business Date: ${data.businessDate}. ${liveTiming.message}`
+              : data.readiness.summary}
+          </p>
           <div className="flex flex-wrap gap-2 text-xs">
             <span className="rounded-md border bg-background/80 px-2 py-1">
               Business Date {data.businessDate}
@@ -176,16 +321,16 @@ export function NightAuditCommandCenterPanel({
               Wall clock {now}
             </span>
             <span className="rounded-md border bg-background/80 px-2 py-1">
-              Window {data.auditWindow.earliestClose} →{" "}
-              {data.auditWindow.recommendedClose} → {data.auditWindow.latestClose}
+              Next audit {data.nextAudit.scheduledCalendarDate} ·{" "}
+              {data.auditWindow.recommendedClose}
             </span>
-            <span className="rounded-md border bg-background/80 px-2 py-1">
-              Status {liveTiming.label}
+            <span className="rounded-md border bg-background/80 px-2 py-1 font-medium">
+              Audit status: {liveTiming.label}
             </span>
           </div>
-          {data.reminderMessage && data.businessDayStatus === "open" ? (
+          {assistantMessage ? (
             <p className="rounded-md border border-dashed bg-background/70 px-3 py-2 text-sm">
-              Operations Assistant: {data.reminderMessage}
+              Operations Assistant: {assistantMessage}
             </p>
           ) : null}
         </CardContent>
@@ -195,17 +340,26 @@ export function NightAuditCommandCenterPanel({
       <Card>
         <CardContent className="grid gap-4 pt-6 sm:grid-cols-3">
           <div>
-            <p className="text-xs uppercase text-muted-foreground">Business Date</p>
+            <p className="text-xs uppercase text-muted-foreground">
+              Current Business Day
+            </p>
             <p className="mt-1 text-lg font-semibold">{data.businessDate}</p>
+            <p className="text-xs text-muted-foreground uppercase">
+              {data.businessDayStatus}
+            </p>
           </div>
           <div>
             <p className="text-xs uppercase text-muted-foreground">
               {liveCountdown.mode === "preparing"
-                ? "Recommended Night Audit"
+                ? "Next Night Audit"
                 : liveCountdown.title}
             </p>
             <p className="mt-1 text-lg font-semibold">
+              {data.nextAudit.scheduledCalendarDate} ·{" "}
               {data.auditWindow.recommendedClose}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Closes {data.businessDate}
             </p>
           </div>
           <div>
@@ -215,7 +369,9 @@ export function NightAuditCommandCenterPanel({
             <p className="mt-1 font-mono text-2xl font-semibold tracking-tight">
               {liveCountdown.display}
             </p>
-            <p className="text-xs text-muted-foreground">{liveCountdown.statusLabel}</p>
+            <p className="text-xs text-muted-foreground">
+              {liveCountdown.statusLabel}
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -243,13 +399,14 @@ export function NightAuditCommandCenterPanel({
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-3 text-sm">
             <span className="rounded-full border px-3 py-1">
-              Day: {data.businessDayStatus}
+              Day · {formatShortDate(data.businessDate)} ·{" "}
+              {data.businessDayStatus.toUpperCase()}
             </span>
             <span className="rounded-full border px-3 py-1">
-              Night Audit: {data.nightAuditStatus}
+              Night Audit · NEXT AUDIT · {nextAuditLabel}
             </span>
             <span className="rounded-full border px-3 py-1">
-              Timing: {liveTiming.label}
+              Timing · {timingPill}
             </span>
             {data.correctionSession ? (
               <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 px-3 py-1 text-amber-800 dark:text-amber-300">
@@ -304,18 +461,22 @@ export function NightAuditCommandCenterPanel({
             />
           </div>
 
-          {/* Expandable readiness checklist */}
           <div className="rounded-lg border">
             <button
               type="button"
               className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium"
               onClick={() => setChecklistOpen((o) => !o)}
             >
-              Readiness Checklist
+              <span>
+                Readiness Checklist
+                <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                  Closing Business Date: {formatLongDate(data.businessDate)}
+                </span>
+              </span>
               {checklistOpen ? (
-                <ChevronUp className="h-4 w-4" />
+                <ChevronUp className="h-4 w-4 shrink-0" />
               ) : (
-                <ChevronDown className="h-4 w-4" />
+                <ChevronDown className="h-4 w-4 shrink-0" />
               )}
             </button>
             {checklistOpen ? (

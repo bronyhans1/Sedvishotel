@@ -8,6 +8,11 @@ import { PublicPageHeader } from "@/components/public/PublicPageHeader";
 import { PublicRoomCard } from "@/components/public/PublicRoomCard";
 import { ScrollReveal } from "@/components/public/ScrollReveal";
 import { Input } from "@/components/ui/input";
+import {
+  ROOMS_PAGE_GALLERY_ALTERNATE,
+  ROOMS_PAGE_GALLERY_PRIMARY,
+  type RoomsPageGalleryId,
+} from "@/lib/public/rooms-page-images";
 import type { PublicRoom } from "@/types/public";
 
 const selectClass =
@@ -17,24 +22,83 @@ type RoomsPageContentProps = {
   publicRooms: PublicRoom[];
 };
 
+type CatalogCard = {
+  key: string;
+  room: PublicRoom;
+  galleryId: RoomsPageGalleryId;
+};
+
+/**
+ * Catalogue order: Standard · Deluxe · Standard.
+ * Both Standard cards share the same room category / booking slug;
+ * the second uses alternate photographs only.
+ */
+function buildCatalogCards(rooms: PublicRoom[]): CatalogCard[] {
+  const standard = rooms.find((room) => room.slug === "standard-room");
+  const deluxe = rooms.find((room) => room.slug === "deluxe-room");
+  const cards: CatalogCard[] = [];
+  if (standard) {
+    cards.push({
+      key: "standard-primary",
+      room: standard,
+      galleryId: ROOMS_PAGE_GALLERY_PRIMARY,
+    });
+  }
+  if (deluxe) {
+    cards.push({
+      key: "deluxe",
+      room: deluxe,
+      galleryId: ROOMS_PAGE_GALLERY_PRIMARY,
+    });
+  }
+  if (standard) {
+    cards.push({
+      key: "standard-alternate",
+      room: standard,
+      galleryId: ROOMS_PAGE_GALLERY_ALTERNATE,
+    });
+  }
+  return cards;
+}
+
 export function RoomsPageContent({ publicRooms }: RoomsPageContentProps) {
   const [search, setSearch] = useState("");
   const [type, setType] = useState("all");
   const [priceMax, setPriceMax] = useState("all");
   const [capacity, setCapacity] = useState("all");
 
+  const catalogCards = useMemo(
+    () => buildCatalogCards(publicRooms),
+    [publicRooms]
+  );
+
   const filtered = useMemo(() => {
-    return publicRooms.filter((room) => {
+    return catalogCards.filter(({ room }) => {
       const q = search.trim().toLowerCase();
-      if (q && !room.name.toLowerCase().includes(q) && !room.description.toLowerCase().includes(q)) {
+      if (
+        q &&
+        !room.name.toLowerCase().includes(q) &&
+        !room.description.toLowerCase().includes(q)
+      ) {
         return false;
       }
       if (type !== "all" && room.categoryId !== type) return false;
-      if (priceMax !== "all" && room.pricePerNight > Number(priceMax)) return false;
+      if (priceMax !== "all" && room.pricePerNight > Number(priceMax)) {
+        return false;
+      }
       if (capacity !== "all" && room.capacity < Number(capacity)) return false;
       return true;
     });
-  }, [search, type, priceMax, capacity, publicRooms]);
+  }, [search, type, priceMax, capacity, catalogCards]);
+
+  const uniqueTypes = useMemo(() => {
+    const seen = new Set<string>();
+    return publicRooms.filter((room) => {
+      if (seen.has(room.categoryId)) return false;
+      seen.add(room.categoryId);
+      return true;
+    });
+  }, [publicRooms]);
 
   return (
     <>
@@ -62,7 +126,7 @@ export function RoomsPageContent({ publicRooms }: RoomsPageContentProps) {
               aria-label="Accommodation type"
             >
               <option value="all">All Accommodations</option>
-              {publicRooms.map((r) => (
+              {uniqueTypes.map((r) => (
                 <option key={r.categoryId} value={r.categoryId}>
                   {r.name}
                 </option>
@@ -93,11 +157,12 @@ export function RoomsPageContent({ publicRooms }: RoomsPageContentProps) {
             </select>
           </div>
           <p className="mt-4 text-sm text-muted-foreground">
-            {filtered.length} accommodation{filtered.length === 1 ? "" : "s"} available
+            {filtered.length} accommodation
+            {filtered.length === 1 ? "" : "s"} available
           </p>
-          <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((room) => (
-              <PublicRoomCard key={room.id} room={room} />
+          <div className="mt-10 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            {filtered.map(({ key, room, galleryId }) => (
+              <PublicRoomCard key={key} room={room} galleryId={galleryId} />
             ))}
           </div>
           {filtered.length === 0 && (

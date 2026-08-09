@@ -33,8 +33,9 @@ export function PublicBookButton({
   showIcon = false,
 }: Props) {
   const styles: Record<Variant, string> = {
-    primary: "bg-brand-gold text-brand-navy hover:bg-brand-gold/90 shadow-md hover:shadow-lg transition-all",
-    secondary: "bg-brand-navy text-white hover:bg-brand-navy/90",
+    primary:
+      "border border-brand-gold/30 bg-brand-gold text-brand-navy shadow-[0_10px_28px_-12px_rgba(201,162,39,0.55)] hover:bg-[#d4af37] hover:shadow-[0_14px_32px_-12px_rgba(201,162,39,0.65)] transition-all",
+    secondary: "bg-brand-navy text-white hover:bg-brand-navy/90 shadow-md hover:shadow-lg",
     outline: "border-brand-navy text-brand-navy hover:bg-brand-navy/5",
     "hero-outline": "border-white/40 bg-white/5 text-white hover:bg-white/15",
   };

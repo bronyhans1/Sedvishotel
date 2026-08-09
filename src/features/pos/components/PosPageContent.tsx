@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useBranding } from "@/components/branding/BrandingProvider";
@@ -36,15 +37,16 @@ import {
 } from "@/lib/pos/pos-receipt";
 import { buildPosCartSettlement, isProductSellable } from "@/lib/pos/settlement";
 import type { PosAccess } from "@/lib/auth/pos-access.types";
+import { formatCurrency } from "@/lib/utils";
 import type {
   PosCartLine,
   PosPaymentMethod,
   PosSale,
   SaleCustomerType,
 } from "@/types/pos";
+import type { PosRegisterDayStrip } from "@/types/pos-dashboard";
 import type { Product, ProductCategoryOption } from "@/types/product";
 import type { ActiveStay } from "@/types/stay";
-
 type PosPageContentProps = {
   products: Product[];
   categoryOptions: ProductCategoryOption[];
@@ -53,6 +55,7 @@ type PosPageContentProps = {
   defaultTaxRate: number;
   defaultVatApplied: boolean;
   canOverrideVat: boolean;
+  dayStrip?: PosRegisterDayStrip | null;
 };
 
 export function PosPageContent({
@@ -63,6 +66,7 @@ export function PosPageContent({
   defaultTaxRate,
   defaultVatApplied,
   canOverrideVat,
+  dayStrip = null,
 }: PosPageContentProps) {
   const router = useRouter();
   const toast = useToast();
@@ -276,14 +280,36 @@ export function PosPageContent({
 
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Retail POS</h1>
           <p className="text-sm text-muted-foreground">
             Scan products, build a cart, and complete walk-in or room charges.
           </p>
         </div>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/dashboard/pos">POS Dashboard</Link>
+        </Button>
       </div>
+
+      {dayStrip ? (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-card px-4 py-2.5 text-sm">
+          <div>
+            <span className="text-muted-foreground">Business Date</span>{" "}
+            <span className="font-mono font-semibold">{dayStrip.businessDate}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Today&apos;s Sales</span>{" "}
+            <span className="font-semibold">
+              {formatCurrency(dayStrip.salesToday)}
+            </span>
+          </div>
+          <div className="text-muted-foreground">
+            {dayStrip.transactions} transaction
+            {dayStrip.transactions === 1 ? "" : "s"}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[240px_minmax(0,1fr)_320px]">
         <PosSidebar

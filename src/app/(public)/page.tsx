@@ -2,17 +2,18 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { AmenitiesSection } from "@/components/public/AmenitiesSection";
+import { FeaturedRoomCard } from "@/components/public/FeaturedRoomCard";
 import { GalleryExperienceSection } from "@/components/public/GalleryExperienceSection";
 import { HeroSection } from "@/components/public/HeroSection";
 import { HotelStatsSection } from "@/components/public/HotelStatsSection";
 import { PublicCTA } from "@/components/public/PublicCTA";
-import { PublicRoomCard } from "@/components/public/PublicRoomCard";
 import { ScrollReveal } from "@/components/public/ScrollReveal";
 import { StickyBookingBar } from "@/components/public/StickyBookingBar";
 import { TrustSection } from "@/components/public/TrustSection";
 import { WhyChooseUs } from "@/components/public/WhyChooseUs";
 import { Button } from "@/components/ui/button";
-import { getFeaturedPublicRooms, loadPublicRooms } from "@/lib/public/load-public-rooms";
+import { homepageFeaturedSlots } from "@/lib/public/homepage-images";
+import { loadPublicRooms } from "@/lib/public/load-public-rooms";
 import { buildPublicMetadata } from "@/lib/public-seo";
 
 export const metadata: Metadata = buildPublicMetadata({
@@ -31,12 +32,14 @@ export const metadata: Metadata = buildPublicMetadata({
 
 export default async function HomePage() {
   const publicRooms = await loadPublicRooms();
-  const featuredPublicRooms = getFeaturedPublicRooms(publicRooms);
+  const roomsBySlug = Object.fromEntries(
+    publicRooms.map((room) => [room.slug, room])
+  );
 
   return (
     <div className="public-home-page">
       <HeroSection />
-      <StickyBookingBar />
+      <StickyBookingBar floating />
       <TrustSection />
       <HotelStatsSection />
       <section className="py-20 sm:py-24">
@@ -50,17 +53,41 @@ export default async function HomePage() {
                 <h2 className="mt-2 font-serif text-3xl font-bold sm:text-4xl">
                   Featured Rooms
                 </h2>
+                <p className="mt-3 max-w-xl text-sm text-muted-foreground sm:text-base">
+                  A curated look at our Standard and Deluxe experiences — with
+                  Deluxe as the centerpiece of your stay.
+                </p>
               </div>
-              <Button variant="outline" asChild className="public-btn-lift">
+              <Button
+                variant="outline"
+                asChild
+                className="public-btn-lift border-brand-navy/20"
+              >
                 <Link href="/rooms">View All Rooms</Link>
               </Button>
             </div>
-            <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-              {featuredPublicRooms.map((room) => (
-                <PublicRoomCard key={room.id} room={room} />
-              ))}
-            </div>
           </ScrollReveal>
+
+          <div className="mt-12 grid items-stretch gap-8 sm:grid-cols-2 lg:grid-cols-3 lg:items-center lg:gap-6">
+            {homepageFeaturedSlots.map((slot) => {
+              const room = roomsBySlug[slot.roomSlug];
+              if (!room) return null;
+              return (
+                <ScrollReveal
+                  key={slot.id}
+                  className={
+                    slot.highlight ? "sm:col-span-2 lg:col-span-1" : undefined
+                  }
+                >
+                  <FeaturedRoomCard
+                    room={room}
+                    imageSrc={slot.src}
+                    highlight={Boolean(slot.highlight)}
+                  />
+                </ScrollReveal>
+              );
+            })}
+          </div>
         </div>
       </section>
       <AmenitiesSection />

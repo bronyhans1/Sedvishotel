@@ -26,17 +26,19 @@ export function HotelStatsSection() {
   return (
     <section className="bg-brand-navy py-16 text-white sm:py-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <ScrollReveal>
-          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
-            {hotelBrandPillars.map((pillar) => (
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          {hotelBrandPillars.map((pillar, index) => (
+            <ScrollReveal
+              key={pillar.secondary}
+              delayMs={index * 100}
+            >
               <BrandPillar
-                key={pillar.secondary}
                 primary={pillar.primary}
                 secondary={pillar.secondary}
               />
-            ))}
-          </div>
-        </ScrollReveal>
+            </ScrollReveal>
+          ))}
+        </div>
       </div>
     </section>
   );

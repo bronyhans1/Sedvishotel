@@ -399,7 +399,9 @@ export class NightAuditService implements INightAuditService {
 
     const wallClock = input.closeWallClock ?? getCurrentTimeString();
     const auditWindow = await loadNightAuditWindowPolicy();
-    const timing = classifyNightAuditTiming(wallClock, auditWindow);
+    const timing = classifyNightAuditTiming(wallClock, auditWindow, {
+      businessDate: input.auditDate,
+    });
     const classification: NightAuditCloseClassification =
       input.closeClassification ?? timing.classification;
     const delayMinutes = input.delayMinutes ?? timing.delayMinutes;

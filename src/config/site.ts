@@ -2,7 +2,7 @@ export const siteConfig = {
   name: "SEDVIS HOTEL",
   shortName: "SHMS",
   fullName: "SEDVIS HOTEL Management System",
-  version: "2.5.0",
+  version: "2.5.5",
   edition: "Enterprise Operations Edition",
   description:
     "Enterprise hotel operations platform for reservations, housekeeping, and revenue.",

@@ -41,6 +41,8 @@ export type CloseReadinessInput = {
   timing: NightAuditTimingAssessment;
   window: NightAuditWindowPolicy;
   dayClosed: boolean;
+  /** Business Date the checklist is preparing to close. */
+  closingBusinessDate?: string;
 };
 
 export function buildNightAuditCloseReadiness(
@@ -166,26 +168,20 @@ export function buildNightAuditCloseReadiness(
       label: "Night Audit window",
       detail: input.timing.message,
       tone:
-        input.timing.classification === "on_time"
+        input.timing.uxStatus === "due"
           ? "green"
-          : input.timing.classification === "early" ||
-              input.timing.classification === "late"
-            ? "yellow"
-            : "red",
-      blocking: input.timing.classification === "too_early",
+          : input.timing.uxStatus === "critical"
+            ? "red"
+            : "yellow",
+      // Close enforcement still requires override when too_early; daytime scheduled is not a crisis.
+      blocking:
+        input.timing.classification === "too_early" &&
+        input.timing.uxStatus !== "scheduled",
     },
   ];
 
-  // Too early without override is the soft "not ready" for governance display
   const blockingCount = items.filter((i) => i.blocking).length;
   const warningCount = items.filter((i) => i.tone === "yellow").length;
-
-  let verdict: CloseReadinessVerdict = "ready";
-  if (blockingCount > 0) {
-    verdict = "not_ready";
-  } else if (warningCount > 0 || input.timing.classification !== "on_time") {
-    verdict = "ready_with_warnings";
-  }
 
   const headlines: Record<CloseReadinessVerdict, string> = {
     ready: "READY TO CLOSE",
@@ -201,10 +197,63 @@ export function buildNightAuditCloseReadiness(
       "Blocking governance requirements still exist (e.g. too early without manager override).",
   };
 
+  const ux = input.timing.uxStatus;
+  const closingLabel = input.closingBusinessDate
+    ? `Closing Business Date: ${input.closingBusinessDate}`
+    : null;
+
+  let verdict: CloseReadinessVerdict = "ready";
+  let headline: string;
+  let summary: string;
+
+  if (ux === "scheduled") {
+    verdict = "ready_with_warnings";
+    headline = "NEXT AUDIT SCHEDULED";
+    summary = closingLabel
+      ? `${closingLabel}. ${input.timing.message}`
+      : input.timing.message;
+  } else if (blockingCount > 0) {
+    verdict = "not_ready";
+    headline = headlines.not_ready;
+    summary = summaries.not_ready;
+  } else if (ux === "due") {
+    if (warningCount > 0) {
+      verdict = "ready_with_warnings";
+      headline = headlines.ready_with_warnings;
+      summary = closingLabel
+        ? `${closingLabel}. Night Audit may be run. Review warnings below.`
+        : summaries.ready_with_warnings;
+    } else {
+      verdict = "ready";
+      headline = headlines.ready;
+      summary = closingLabel
+        ? `${closingLabel}. Everything required looks complete. Night Audit can be run.`
+        : summaries.ready;
+    }
+  } else if (ux === "overdue" || ux === "critical") {
+    verdict = "ready_with_warnings";
+    headline =
+      ux === "critical" ? "CRITICALLY OVERDUE" : "OVERDUE — CLOSE WHEN READY";
+    summary = closingLabel
+      ? `${closingLabel}. ${input.timing.message}`
+      : input.timing.message;
+  } else if (warningCount > 0 || input.timing.classification !== "on_time") {
+    verdict = "ready_with_warnings";
+    headline = headlines.ready_with_warnings;
+    summary = closingLabel
+      ? `${closingLabel}. ${summaries.ready_with_warnings}`
+      : summaries.ready_with_warnings;
+  } else {
+    headline = headlines.ready;
+    summary = closingLabel
+      ? `${closingLabel}. ${summaries.ready}`
+      : summaries.ready;
+  }
+
   return {
     verdict,
-    headline: headlines[verdict],
-    summary: summaries[verdict],
+    headline,
+    summary,
     items,
     blockingCount,
     warningCount,

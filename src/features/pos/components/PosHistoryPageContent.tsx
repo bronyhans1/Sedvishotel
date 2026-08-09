@@ -172,7 +172,7 @@ export function PosHistoryPageContent({
       description="Read-only record of completed retail sales and room charges."
       actions={
         <Button variant="outline" size="sm" asChild>
-          <Link href="/dashboard/pos">
+          <Link href="/dashboard/pos/register">
             <ShoppingCart className="h-4 w-4" />
             Open POS
           </Link>
