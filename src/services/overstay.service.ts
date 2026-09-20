@@ -142,12 +142,19 @@ export class OverstayService {
 
   /**
    * Night Audit pre-close warning — policy-driven, not hardcoded block.
+   * Prefetched reservations (same shape as reservations.getAll) skip a duplicate fetch.
    */
   async buildNightAuditWarning(
-    businessDate: string
+    businessDate: string,
+    prefetchedReservations?: Awaited<
+      ReturnType<IReservationRepository["getAll"]>
+    >
   ): Promise<OverstayNightAuditWarning> {
     const policy = await loadOverstayPolicy();
-    const all = await this.reservations.getAll();
+    const all =
+      prefetchedReservations !== undefined
+        ? prefetchedReservations
+        : await this.reservations.getAll();
     const checkedIn = all
       .map(mapDbReservationToReservation)
       .filter((r) => r.status === "checked_in");

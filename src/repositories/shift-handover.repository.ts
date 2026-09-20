@@ -9,6 +9,8 @@ export interface IShiftHandoverRepository {
   getOpenShift(): Promise<DbShiftHandover | null>;
   getByNumber(handoverNumber: string): Promise<DbShiftHandover | null>;
   getById(id: string): Promise<DbShiftHandover | null>;
+  /** Batched ID lookup — same row shape as getById. */
+  getByIds(ids: string[]): Promise<DbShiftHandover[]>;
   listAll(): Promise<DbShiftHandover[]>;
   getLatestClosed(): Promise<DbShiftHandover | null>;
   getPendingAcknowledgement(): Promise<DbShiftHandover | null>;

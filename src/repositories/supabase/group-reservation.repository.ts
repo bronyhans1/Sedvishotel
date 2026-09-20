@@ -108,6 +108,31 @@ export class SupabaseGroupReservationRepository implements IGroupReservationRepo
     return (data ?? []) as unknown as DbReservationWithRelations[];
   }
 
+  async listReservationsByGroupIds(
+    groupIds: string[]
+  ): Promise<DbReservationWithRelations[]> {
+    const unique = [...new Set(groupIds.filter(Boolean))];
+    if (unique.length === 0) return [];
+
+    const rows: DbReservationWithRelations[] = [];
+    const chunkSize = 100;
+    for (let i = 0; i < unique.length; i += chunkSize) {
+      const chunk = unique.slice(i, i + chunkSize);
+      const { data, error } = await this.client
+        .from("reservations")
+        .select(RESERVATION_SELECT)
+        .in("group_reservation_id", chunk)
+        .order("created_at", { ascending: true });
+      if (error) {
+        throw new Error(
+          `Failed to list reservations by group ids: ${error.message}`
+        );
+      }
+      rows.push(...((data ?? []) as unknown as DbReservationWithRelations[]));
+    }
+    return rows;
+  }
+
   async countReservationsByStatus(groupId: string) {
     const reservations = await this.listReservations(groupId);
     return {

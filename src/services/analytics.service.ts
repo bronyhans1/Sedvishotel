@@ -1,10 +1,22 @@
 import { getAnalyticsAccess } from "@/lib/auth/analytics-access";
+import {
+  DASHBOARD_CORE_NEEDS,
+  REPORTS_CORE_NEEDS,
+  REVENUE_CORE_NEEDS,
+  guestAnalyticsStub,
+  invoiceStatusStub,
+  resolveAnalyticsInvoiceStatus,
+  type AnalyticsCoreDataNeeds,
+} from "@/lib/analytics/core-data";
 import { computeDashboardHomeData } from "@/lib/analytics/dashboard";
 import { computeReportsData } from "@/lib/analytics/reports";
 import { computeRevenueData } from "@/lib/analytics/revenue";
 import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import { getCalendarDateString } from "@/lib/dates/today";
 import { getCurrentTimeString } from "@/lib/dates/time";
+import { mapDbPaymentRowToPayment } from "@/lib/payments/mapper";
+import { mapDbReservationToReservation } from "@/lib/reservations/mapper";
+import { mapDbRoomToRoom } from "@/lib/rooms/mapper";
 import { loadCheckoutPolicy } from "@/lib/settings/checkout-policy";
 import type { IActivityLogRepository } from "@/repositories/activity-log.repository";
 import type { IGuestRepository } from "@/repositories/guest.repository";
@@ -12,17 +24,25 @@ import type { IInvoiceRepository } from "@/repositories/invoice.repository";
 import type { IPaymentRepository } from "@/repositories/payment.repository";
 import type { IReservationRepository } from "@/repositories/reservation.repository";
 import type { IRoomRepository } from "@/repositories/room.repository";
-import { mapDbGuestToGuest } from "@/lib/guests/mapper";
-import { mapDbInvoiceToInvoice } from "@/lib/invoices/mapper";
-import { mapDbPaymentToPayment } from "@/lib/payments/mapper";
-import { mapDbReservationToReservation } from "@/lib/reservations/mapper";
-import { mapDbRoomToRoom } from "@/lib/rooms/mapper";
 import type { AuthSession } from "@/services/auth.service";
 import { ServiceError } from "@/services/types";
 import type { ServiceContext } from "@/services/types";
 import type { DashboardHomeData } from "@/types/dashboard-home";
+import type { Guest } from "@/types/guest";
+import type { Invoice } from "@/types/invoice";
+import type { Payment } from "@/types/payment";
 import type { ReportsData } from "@/types/reports";
+import type { Reservation } from "@/types/reservation";
 import type { RevenueData } from "@/types/revenue";
+import type { Room } from "@/types/room";
+
+type AnalyticsCoreData = {
+  payments: Payment[];
+  invoices: Invoice[];
+  reservations: Reservation[];
+  rooms: Room[];
+  guests: Guest[];
+};
 
 export interface IAnalyticsService {
   getRevenueData(ctx: ServiceContext, session: AuthSession): Promise<RevenueData>;
@@ -43,27 +63,89 @@ export class AnalyticsService implements IAnalyticsService {
     private readonly activityLogs: IActivityLogRepository
   ) {}
 
-  private async loadCoreData() {
-    const [paymentRows, invoiceRows, reservationRows, roomRows, guestRows] =
+  /**
+   * Consumer-scoped analytics load.
+   * - Lean column selects (listForAnalytics / status rows)
+   * - Skip unused tables per page (e.g. guests/invoices on dashboard)
+   * - Skip payment timeline construction when not required
+   *
+   * KPI formulas and Business Date semantics are unchanged.
+   * Lifetime aggregates still load all historical rows that those KPIs require.
+   */
+  private async loadCoreData(
+    needs: AnalyticsCoreDataNeeds
+  ): Promise<AnalyticsCoreData> {
+    const paymentsPromise = needs.payments
+      ? this.payments.listForAnalytics()
+      : Promise.resolve([]);
+    const invoicesPromise = needs.invoices
+      ? this.invoices.listStatusRowsForAnalytics()
+      : Promise.resolve([]);
+    const reservationsPromise = needs.reservations
+      ? this.reservations.listForAnalytics()
+      : Promise.resolve([]);
+    const roomsPromise = needs.rooms
+      ? this.rooms.getAll(false)
+      : Promise.resolve([]);
+    const guestsPromise = needs.guests
+      ? this.guests.listForAnalytics()
+      : Promise.resolve([]);
+
+    const [paymentItems, invoiceRows, reservationRows, roomRows, guestRows] =
       await Promise.all([
-        this.payments.getAll(),
-        this.invoices.getAll(),
-        this.reservations.getAll(),
-        this.rooms.getAll(false),
-        this.guests.getAll(false),
+        paymentsPromise,
+        invoicesPromise,
+        reservationsPromise,
+        roomsPromise,
+        guestsPromise,
       ]);
 
-    const txByPayment = await this.payments.getTransactionsForIds(
-      paymentRows.map((row) => row.id)
-    );
-    const payments = paymentRows.map((row) =>
-      mapDbPaymentToPayment(row, txByPayment.get(row.id) ?? [])
-    );
+    let payments: Payment[] = [];
+    if (needs.payments) {
+      const txByPayment = await this.payments.getTransactionsForIds(
+        paymentItems.map((item) => item.payment.id)
+      );
+      payments = paymentItems.map((item) =>
+        mapDbPaymentRowToPayment(
+          item.payment,
+          {
+            guestName: item.guestName,
+            reservationNumber: item.reservationNumber,
+            roomNumber: item.roomNumber,
+          },
+          txByPayment.get(item.payment.id) ?? [],
+          { includeTimeline: needs.paymentTimelines }
+        )
+      );
+    }
 
-    const invoices = invoiceRows.map(mapDbInvoiceToInvoice);
-    const reservations = reservationRows.map(mapDbReservationToReservation);
-    const rooms = roomRows.map(mapDbRoomToRoom);
-    const guests = guestRows.map(mapDbGuestToGuest);
+    const invoices: Invoice[] = needs.invoices
+      ? invoiceRows.map((row) =>
+          invoiceStatusStub(
+            resolveAnalyticsInvoiceStatus(
+              row.balance,
+              row.amount_paid,
+              row.status
+            )
+          )
+        )
+      : [];
+
+    const reservations: Reservation[] = needs.reservations
+      ? reservationRows.map(mapDbReservationToReservation)
+      : [];
+
+    const rooms: Room[] = needs.rooms ? roomRows.map(mapDbRoomToRoom) : [];
+
+    const guests: Guest[] = needs.guests
+      ? guestRows.map((row) =>
+          guestAnalyticsStub({
+            id: row.id,
+            totalVisits: row.total_visits,
+            vipStatus: row.vip_status,
+          })
+        )
+      : [];
 
     return { payments, invoices, reservations, rooms, guests };
   }
@@ -80,7 +162,7 @@ export class AnalyticsService implements IAnalyticsService {
       );
     }
 
-    const data = await this.loadCoreData();
+    const data = await this.loadCoreData(REVENUE_CORE_NEEDS);
     const businessDate = await getCurrentBusinessDate();
     return computeRevenueData({
       ...data,
@@ -100,7 +182,7 @@ export class AnalyticsService implements IAnalyticsService {
       );
     }
 
-    const data = await this.loadCoreData();
+    const data = await this.loadCoreData(REPORTS_CORE_NEEDS);
     const [businessDate, policy] = await Promise.all([
       getCurrentBusinessDate(),
       loadCheckoutPolicy(),
@@ -140,7 +222,7 @@ export class AnalyticsService implements IAnalyticsService {
     }
 
     const [core, activityLogs, businessDate, policy] = await Promise.all([
-      this.loadCoreData(),
+      this.loadCoreData(DASHBOARD_CORE_NEEDS),
       this.activityLogs.findRecent(8),
       getCurrentBusinessDate(),
       loadCheckoutPolicy(),

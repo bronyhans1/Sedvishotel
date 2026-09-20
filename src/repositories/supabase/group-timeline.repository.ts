@@ -16,6 +16,27 @@ export class SupabaseGroupTimelineRepository implements IGroupTimelineRepository
     return data ?? [];
   }
 
+  async listByGroupIds(groupIds: string[]): Promise<DbGroupTimelineEvent[]> {
+    const unique = [...new Set(groupIds.filter(Boolean))];
+    if (unique.length === 0) return [];
+
+    const rows: DbGroupTimelineEvent[] = [];
+    const chunkSize = 100;
+    for (let i = 0; i < unique.length; i += chunkSize) {
+      const chunk = unique.slice(i, i + chunkSize);
+      const { data, error } = await this.client
+        .from("group_timeline_events")
+        .select("*")
+        .in("group_reservation_id", chunk)
+        .order("created_at", { ascending: false });
+      if (error) {
+        throw new Error(`Failed to list group timelines by groups: ${error.message}`);
+      }
+      rows.push(...(data ?? []));
+    }
+    return rows;
+  }
+
   async create(input: CreateGroupTimelineEventInput): Promise<DbGroupTimelineEvent> {
     const { data, error } = await this.client
       .from("group_timeline_events")

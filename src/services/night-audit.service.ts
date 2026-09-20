@@ -28,7 +28,7 @@ import type { ReservationService } from "@/services/reservation.service";
 import { ServiceError } from "@/services/types";
 import type { ServiceContext } from "@/services/types";
 import { ActivityActionCodes } from "@/types/database/enums";
-import type { DbNightAudit, DbNightAuditRevision } from "@/types/database";
+import type { DbNightAudit, DbNightAuditRevision, DbReservationWithRelations, DbRoomWithType } from "@/types/database";
 import type {
   CloseNightAuditInput,
   NightAudit,
@@ -38,6 +38,12 @@ import type {
 import type { OverstayNightAuditWarning } from "@/types/overstay";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Optional request-scoped prefetch for page-load snapshot generation. */
+export type NightAuditSnapshotPrefetch = {
+  reservations?: DbReservationWithRelations[];
+  rooms?: DbRoomWithType[];
+};
 
 export type ResolveCurrentDayResult = {
   businessDate: string;
@@ -58,7 +64,8 @@ export interface INightAuditService {
   generateSnapshot(
     ctx: ServiceContext,
     session: AuthSession,
-    auditDate: string
+    auditDate: string,
+    prefetch?: NightAuditSnapshotPrefetch
   ): Promise<NightAuditSnapshot>;
   closeDay(
     ctx: ServiceContext,
@@ -109,10 +116,14 @@ export class NightAuditService implements INightAuditService {
   ) {}
 
   async getOverstayWarning(
-    businessDate: string
+    businessDate: string,
+    prefetchedReservations?: DbReservationWithRelations[]
   ): Promise<OverstayNightAuditWarning | null> {
     if (!this.overstays) return null;
-    return this.overstays.buildNightAuditWarning(businessDate);
+    return this.overstays.buildNightAuditWarning(
+      businessDate,
+      prefetchedReservations
+    );
   }
 
   private require(
@@ -131,12 +142,11 @@ export class NightAuditService implements INightAuditService {
   private async resolveUserNames(ids: (string | null | undefined)[]) {
     const unique = [...new Set(ids.filter(Boolean))] as string[];
     const map = new Map<string, string>();
-    await Promise.all(
-      unique.map(async (id) => {
-        const user = await this.users.findById(id);
-        if (user) map.set(id, user.full_name);
-      })
-    );
+    if (unique.length === 0) return map;
+    const users = await this.users.findByIds(unique);
+    for (const user of users) {
+      map.set(user.id, user.full_name);
+    }
     return map;
   }
 
@@ -341,11 +351,16 @@ export class NightAuditService implements INightAuditService {
   async generateSnapshot(
     _ctx: ServiceContext,
     session: AuthSession,
-    auditDate: string
+    auditDate: string,
+    prefetch?: NightAuditSnapshotPrefetch
   ): Promise<NightAuditSnapshot> {
     this.require(session, "view");
     this.assertAuditDate(auditDate);
-    return buildNightAuditSnapshot(auditDate, this.snapshotDeps());
+    return buildNightAuditSnapshot(auditDate, {
+      ...this.snapshotDeps(),
+      prefetchedReservations: prefetch?.reservations,
+      prefetchedRooms: prefetch?.rooms,
+    });
   }
 
   async closeDay(
@@ -733,12 +748,12 @@ export class NightAuditService implements INightAuditService {
     );
     const shiftIds = [...new Set(rows.map((r) => r.shift_handover_id).filter(Boolean))] as string[];
     const shifts = new Map<string, Awaited<ReturnType<IShiftHandoverRepository["getById"]>>>();
-    await Promise.all(
-      shiftIds.map(async (id) => {
-        const shift = await this.shiftHandovers.getById(id);
-        if (shift) shifts.set(id, shift);
-      })
-    );
+    if (shiftIds.length > 0) {
+      const shiftRows = await this.shiftHandovers.getByIds(shiftIds);
+      for (const shift of shiftRows) {
+        shifts.set(shift.id, shift);
+      }
+    }
     return rows.map((row) =>
       mapDbNightAuditToNightAudit(
         row,

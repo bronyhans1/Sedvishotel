@@ -37,6 +37,10 @@ export interface IGuestFolioRepository {
   getOpenByReservationId(reservationId: string): Promise<DbGuestFolioWithRelations | null>;
   getByReservationId(reservationId: string): Promise<DbGuestFolioWithRelations | null>;
   listByReservationId(reservationId: string): Promise<DbGuestFolioWithRelations[]>;
+  /** Batched folios for many reservations. Empty ids → []. */
+  listByReservationIds(
+    reservationIds: string[]
+  ): Promise<DbGuestFolioWithRelations[]>;
   list(options?: {
     status?: DbGuestFolioStatus;
     fromDate?: string;
@@ -50,6 +54,10 @@ export interface IGuestFolioRepository {
   listEntriesForBusinessDate(businessDate: string): Promise<DbFolioEntry[]>;
   listOpenFoliosWithEntries(): Promise<DbGuestFolioWithRelations[]>;
   listChildFolios(parentFolioId: string): Promise<DbGuestFolioWithRelations[]>;
+  /** Batched child folios. Empty ids → []. */
+  listChildFoliosByParentIds(
+    parentFolioIds: string[]
+  ): Promise<DbGuestFolioWithRelations[]>;
   setParentFolio(folioId: string, parentFolioId: string | null): Promise<DbGuestFolio>;
 }
 

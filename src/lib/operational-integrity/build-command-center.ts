@@ -25,6 +25,10 @@ import type { IShiftHandoverRepository } from "@/repositories/shift-handover.rep
 import { mapDbReservationToReservation } from "@/lib/reservations/mapper";
 import type { NightAudit } from "@/types/night-audit";
 import type { NightAuditCommandCenter } from "@/types/operational-integrity";
+import type {
+  DbReservationWithRelations,
+  DbRoomWithType,
+} from "@/types/database";
 import { getOverstayService } from "@/lib/overstay/get-overstay-service";
 
 function formatLongDate(dateStr: string): string {
@@ -80,6 +84,10 @@ export async function buildNightAuditCommandCenter(input: {
   rooms: IRoomRepository;
   activityLogs: IActivityLogRepository;
   shiftHandovers: IShiftHandoverRepository;
+  /** When provided, skips rooms.getAll(false). Same shape as rooms.getAll(false). */
+  prefetchedRooms?: DbRoomWithType[];
+  /** When provided, skips reservations.getAll(). Same shape as reservations.getAll(). */
+  prefetchedReservations?: DbReservationWithRelations[];
 }): Promise<NightAuditCommandCenter> {
   const [
     lockService,
@@ -99,8 +107,12 @@ export async function buildNightAuditCommandCenter(input: {
     loadLockPolicy(),
     loadNightAuditWindowPolicy(),
     loadCheckoutPolicy(),
-    input.rooms.getAll(false),
-    input.reservations.getAll(),
+    input.prefetchedRooms !== undefined
+      ? Promise.resolve(input.prefetchedRooms)
+      : input.rooms.getAll(false),
+    input.prefetchedReservations !== undefined
+      ? Promise.resolve(input.prefetchedReservations)
+      : input.reservations.getAll(),
     input.shiftHandovers.getOpenShift(),
     input.activityLogs.findAll(
       {

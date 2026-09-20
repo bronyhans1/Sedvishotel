@@ -15,7 +15,12 @@ import type { IPaymentRepository } from "@/repositories/payment.repository";
 import type { IPosRepository } from "@/repositories/pos.repository";
 import type { IReservationRepository } from "@/repositories/reservation.repository";
 import type { IRoomRepository } from "@/repositories/room.repository";
-import type { DbPaymentTransaction, DbSale } from "@/types/database";
+import type {
+  DbPaymentTransaction,
+  DbReservationWithRelations,
+  DbRoomWithType,
+  DbSale,
+} from "@/types/database";
 import type { NightAuditSnapshot } from "@/types/night-audit";
 
 function isOnBusinessDate(iso: string | null | undefined, businessDate: string): boolean {
@@ -123,12 +128,20 @@ export async function buildNightAuditSnapshot(
     payments: IPaymentRepository;
     pos?: IPosRepository;
     folios?: IGuestFolioRepository;
+    /** When provided, skips rooms.getAll(false). Same shape as rooms.getAll(false). */
+    prefetchedRooms?: DbRoomWithType[];
+    /** When provided, skips reservations.getAll(). Same shape as reservations.getAll(). */
+    prefetchedReservations?: DbReservationWithRelations[];
   }
 ): Promise<NightAuditSnapshot> {
   const [roomRows, reservationRows, transactions, posPayments, posSales, folioEntries, openFolios] =
     await Promise.all([
-      deps.rooms.getAll(false),
-      deps.reservations.getAll(),
+      deps.prefetchedRooms !== undefined
+        ? Promise.resolve(deps.prefetchedRooms)
+        : deps.rooms.getAll(false),
+      deps.prefetchedReservations !== undefined
+        ? Promise.resolve(deps.prefetchedReservations)
+        : deps.reservations.getAll(),
       deps.payments.getTransactionsForBusinessDate(businessDate),
       deps.pos?.listPaymentsForBusinessDate(businessDate) ?? Promise.resolve([]),
       deps.pos?.listSalesForBusinessDate(businessDate) ?? Promise.resolve([]),

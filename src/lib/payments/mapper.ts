@@ -173,6 +173,48 @@ function buildPaymentFields(
   };
 }
 
+/** Totals-only payment fields — skips timeline object construction (dashboard). */
+function buildPaymentFieldsWithoutTimeline(
+  row: DbPayment,
+  transactions: DbPaymentTransaction[]
+): Pick<
+  Payment,
+  | "method"
+  | "totalPaid"
+  | "totalRefunded"
+  | "netPaid"
+  | "maxRefundable"
+  | "transactionCount"
+  | "refundCount"
+  | "firstPaymentDate"
+  | "lastPaymentDate"
+  | "methodsUsed"
+  | "timeline"
+  | "transactionHistory"
+> {
+  const ordered = sortedTransactions(transactions);
+  const totals = computeTransactionTotals(ordered);
+  const positive = ordered.filter((tx) => Number(tx.amount) > 0);
+  return {
+    method: aggregatePaymentMethod(ordered),
+    totalPaid: totals.totalPaid,
+    totalRefunded: totals.totalRefunded,
+    netPaid: totals.netPaid,
+    maxRefundable: totals.maxRefundable,
+    transactionCount: positive.length,
+    refundCount: ordered.filter((tx) => Number(tx.amount) < 0).length,
+    firstPaymentDate: positive[0]
+      ? formatDate(positive[0].transacted_at)
+      : formatDate(row.payment_date),
+    lastPaymentDate: positive[positive.length - 1]
+      ? formatDate(positive[positive.length - 1].transacted_at)
+      : formatDate(row.payment_date),
+    methodsUsed: getMethodsUsed(ordered),
+    timeline: [],
+    transactionHistory: [],
+  };
+}
+
 function mapPaymentCore(
   row: DbPayment,
   relations: {
@@ -182,9 +224,12 @@ function mapPaymentCore(
     reservationNumber: string;
     roomNumber: string;
   },
-  transactions: DbPaymentTransaction[]
+  transactions: DbPaymentTransaction[],
+  includeTimeline: boolean
 ): Payment {
-  const derived = buildPaymentFields(row, transactions);
+  const derived = includeTimeline
+    ? buildPaymentFields(row, transactions)
+    : buildPaymentFieldsWithoutTimeline(row, transactions);
 
   return {
     id: row.id,
@@ -218,7 +263,8 @@ export function mapDbPaymentToPayment(
       reservationNumber: reservation.reservation_number,
       roomNumber: reservation.room.room_number,
     },
-    transactions
+    transactions,
+    true
   );
 }
 
@@ -229,7 +275,8 @@ export function mapDbPaymentRowToPayment(
     reservationNumber: string;
     roomNumber: string;
   },
-  transactions: DbPaymentTransaction[]
+  transactions: DbPaymentTransaction[],
+  options?: { includeTimeline?: boolean }
 ): Payment {
   return mapPaymentCore(
     row,
@@ -240,6 +287,7 @@ export function mapDbPaymentRowToPayment(
       reservationNumber: relations.reservationNumber,
       roomNumber: relations.roomNumber,
     },
-    transactions
+    transactions,
+    options?.includeTimeline !== false
   );
 }

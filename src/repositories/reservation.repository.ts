@@ -29,6 +29,8 @@ export type ExtendStayAvailabilityResult =
 
 export interface IReservationRepository {
   getAll(): Promise<DbReservationWithRelations[]>;
+  /** Leaner relation select for analytics computes (same reservation rows). */
+  listForAnalytics(): Promise<DbReservationWithRelations[]>;
   getById(id: string): Promise<DbReservationWithRelations | null>;
   getByNumber(reservationNumber: string): Promise<DbReservationWithRelations | null>;
   getByGuestId(guestId: string): Promise<DbReservationWithRelations[]>;

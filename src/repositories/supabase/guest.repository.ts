@@ -1,6 +1,9 @@
 import { GUEST_ARCHIVED_MARKER } from "@/lib/guests/constants";
 import { isGuestArchived } from "@/lib/guests/mapper";
-import type { IGuestRepository } from "@/repositories/guest.repository";
+import type {
+  AnalyticsGuestRow,
+  IGuestRepository,
+} from "@/repositories/guest.repository";
 import type { SupabaseServerClient } from "@/lib/supabase/server";
 import type { DbGuest } from "@/types/database";
 
@@ -20,6 +23,26 @@ export class SupabaseGuestRepository implements IGuestRepository {
     const rows = data ?? [];
     if (includeArchived) return rows;
     return rows.filter((row) => !isGuestArchived(row));
+  }
+
+  async listForAnalytics(): Promise<AnalyticsGuestRow[]> {
+    const { data, error } = await this.client
+      .from("guests")
+      .select("id, total_visits, vip_status, notes")
+      .order("full_name", { ascending: true });
+
+    if (error) {
+      throw new Error(`Failed to list guests for analytics: ${error.message}`);
+    }
+
+    return (data ?? [])
+      .filter((row) => !isGuestArchived(row as DbGuest))
+      .map((row) => ({
+        id: row.id,
+        total_visits: Number(row.total_visits ?? 0),
+        vip_status: Boolean(row.vip_status),
+        notes: row.notes,
+      }));
   }
 
   async getById(id: string): Promise<DbGuest | null> {

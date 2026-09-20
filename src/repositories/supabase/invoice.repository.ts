@@ -1,11 +1,14 @@
-import { isUuid } from "@/lib/invoices/mapper";
-import type { IInvoiceRepository } from "@/repositories/invoice.repository";
+import type {
+  AnalyticsInvoiceStatusRow,
+  IInvoiceRepository,
+} from "@/repositories/invoice.repository";
 import type { SupabaseServerClient } from "@/lib/supabase/server";
 import type {
   DbInvoice,
   DbInvoiceWithRelations,
   DbReservationWithRelations,
 } from "@/types/database";
+import { isUuid } from "@/lib/invoices/mapper";
 
 const INVOICE_SELECT = `
   *,
@@ -63,6 +66,60 @@ export class SupabaseInvoiceRepository implements IInvoiceRepository {
     return (data ?? [])
       .map((row) => toInvoiceWithRelations(row as unknown as InvoiceRow))
       .filter((row): row is DbInvoiceWithRelations => Boolean(row));
+  }
+
+  async listStatusRowsForAnalytics(): Promise<AnalyticsInvoiceStatusRow[]> {
+    const { data, error } = await this.client
+      .from("invoices")
+      .select(
+        `
+        status,
+        balance,
+        amount_paid,
+        guest:guests!invoices_guest_id_fkey (id),
+        reservation:reservations!invoices_reservation_id_fkey (
+          id,
+          room:rooms!reservations_room_id_fkey (id),
+          room_type:room_types!reservations_room_type_id_fkey (id)
+        )
+      `
+      )
+      .order("invoice_date", { ascending: false });
+
+    if (error) {
+      throw new Error(
+        `Failed to list invoice statuses for analytics: ${error.message}`
+      );
+    }
+
+    const rows: AnalyticsInvoiceStatusRow[] = [];
+    for (const raw of data ?? []) {
+      const row = raw as unknown as {
+        status: AnalyticsInvoiceStatusRow["status"];
+        balance: number;
+        amount_paid: number;
+        guest: { id: string } | null;
+        reservation: {
+          id: string;
+          room: { id: string } | null;
+          room_type: { id: string } | null;
+        } | null;
+      };
+      // Match prior getAll() filter: drop invoices missing relation graph.
+      if (
+        !row.guest ||
+        !row.reservation?.room ||
+        !row.reservation?.room_type
+      ) {
+        continue;
+      }
+      rows.push({
+        status: row.status,
+        balance: Number(row.balance),
+        amount_paid: Number(row.amount_paid),
+      });
+    }
+    return rows;
   }
 
   async getById(id: string): Promise<DbInvoiceWithRelations | null> {

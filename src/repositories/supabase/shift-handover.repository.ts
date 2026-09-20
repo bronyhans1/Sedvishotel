@@ -57,6 +57,27 @@ export class SupabaseShiftHandoverRepository implements IShiftHandoverRepository
     return data;
   }
 
+  async getByIds(ids: string[]): Promise<DbShiftHandover[]> {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (unique.length === 0) return [];
+
+    const rows: DbShiftHandover[] = [];
+    const chunkSize = 100;
+    for (let i = 0; i < unique.length; i += chunkSize) {
+      const chunk = unique.slice(i, i + chunkSize);
+      const { data, error } = await this.client
+        .from("shift_handovers")
+        .select("*")
+        .in("id", chunk);
+
+      if (error) {
+        throw new Error(`Failed to load shift handovers by ids: ${error.message}`);
+      }
+      rows.push(...(data ?? []));
+    }
+    return rows;
+  }
+
   async listAll(): Promise<DbShiftHandover[]> {
     const { data, error } = await this.client
       .from("shift_handovers")

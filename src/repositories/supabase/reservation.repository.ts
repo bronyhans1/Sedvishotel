@@ -27,6 +27,31 @@ const RESERVATION_SELECT = `
   room_type:room_types!reservations_room_type_id_fkey (*)
 `;
 
+/**
+ * Analytics: full reservation columns, but only fields used by
+ * mapDbReservationToReservation on related entities.
+ */
+const RESERVATION_ANALYTICS_SELECT = `
+  *,
+  guest:guests!reservations_guest_id_fkey (id, full_name, phone, email),
+  room:rooms!reservations_room_id_fkey (
+    id,
+    room_number,
+    floor_id,
+    floor,
+    notes,
+    status,
+    room_type_id,
+    room_type:room_types!rooms_room_type_id_fkey (
+      id, slug, name, default_price, capacity, description, amenities
+    ),
+    floor_record:floors!rooms_floor_id_fkey (id, name, display_order)
+  ),
+  room_type:room_types!reservations_room_type_id_fkey (
+    id, slug, name, default_price, capacity, description, amenities
+  )
+`;
+
 const ROOM_SELECT = `
   *,
   room_type:room_types!rooms_room_type_id_fkey (*),
@@ -66,6 +91,23 @@ export class SupabaseReservationRepository implements IReservationRepository {
 
     if (error) {
       throw new Error(`Failed to list reservations: ${error.message}`);
+    }
+
+    return (data ?? [])
+      .map((row) => toReservationWithRelations(row as unknown as ReservationRow))
+      .filter((r): r is DbReservationWithRelations => Boolean(r));
+  }
+
+  async listForAnalytics(): Promise<DbReservationWithRelations[]> {
+    const { data, error } = await this.client
+      .from("reservations")
+      .select(RESERVATION_ANALYTICS_SELECT)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw new Error(
+        `Failed to list reservations for analytics: ${error.message}`
+      );
     }
 
     return (data ?? [])

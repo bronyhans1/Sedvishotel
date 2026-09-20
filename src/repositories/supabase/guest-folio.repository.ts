@@ -137,6 +137,35 @@ export class SupabaseGuestFolioRepository implements IGuestFolioRepository {
       .filter((row): row is DbGuestFolioWithRelations => Boolean(row));
   }
 
+  async listByReservationIds(
+    reservationIds: string[]
+  ): Promise<DbGuestFolioWithRelations[]> {
+    const unique = [...new Set(reservationIds.filter(Boolean))];
+    if (unique.length === 0) return [];
+
+    const rows: DbGuestFolioWithRelations[] = [];
+    const chunkSize = 100;
+    for (let i = 0; i < unique.length; i += chunkSize) {
+      const chunk = unique.slice(i, i + chunkSize);
+      const { data, error } = await this.client
+        .from("guest_folios")
+        .select(FOLIO_SELECT)
+        .in("reservation_id", chunk)
+        .order("created_at", { ascending: false });
+      if (error) {
+        throw new Error(
+          `Failed to list folios by reservation ids: ${error.message}`
+        );
+      }
+      rows.push(
+        ...(data ?? [])
+          .map((row) => toFolioWithRelations(row as unknown as FolioRow))
+          .filter((row): row is DbGuestFolioWithRelations => Boolean(row))
+      );
+    }
+    return rows;
+  }
+
   async list(options?: {
     status?: DbGuestFolioStatus;
     fromDate?: string;
@@ -282,6 +311,35 @@ export class SupabaseGuestFolioRepository implements IGuestFolioRepository {
     return (data ?? [])
       .map((row) => toFolioWithRelations(row as unknown as FolioRow))
       .filter((row): row is DbGuestFolioWithRelations => Boolean(row));
+  }
+
+  async listChildFoliosByParentIds(
+    parentFolioIds: string[]
+  ): Promise<DbGuestFolioWithRelations[]> {
+    const unique = [...new Set(parentFolioIds.filter(Boolean))];
+    if (unique.length === 0) return [];
+
+    const rows: DbGuestFolioWithRelations[] = [];
+    const chunkSize = 100;
+    for (let i = 0; i < unique.length; i += chunkSize) {
+      const chunk = unique.slice(i, i + chunkSize);
+      const { data, error } = await this.client
+        .from("guest_folios")
+        .select(FOLIO_SELECT)
+        .in("parent_folio_id", chunk)
+        .order("opened_at", { ascending: true });
+      if (error) {
+        throw new Error(
+          `Failed to list child folios by parent ids: ${error.message}`
+        );
+      }
+      rows.push(
+        ...(data ?? [])
+          .map((row) => toFolioWithRelations(row as unknown as FolioRow))
+          .filter((row): row is DbGuestFolioWithRelations => Boolean(row))
+      );
+    }
+    return rows;
   }
 
   async setParentFolio(

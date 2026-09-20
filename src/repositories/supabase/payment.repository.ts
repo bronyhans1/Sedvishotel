@@ -12,6 +12,7 @@ import {
   type RpcPaymentCommitRow,
 } from "@/lib/payments/atomic-commit";
 import type {
+  AnalyticsPaymentListItem,
   CreatePaymentTransactionInput,
   IPaymentRepository,
 } from "@/repositories/payment.repository";
@@ -34,6 +35,29 @@ const PAYMENT_SELECT = `
   )
 `;
 
+/** Analytics: payment row + display labels only (no nested guest/room_type trees). */
+const PAYMENT_ANALYTICS_SELECT = `
+  id,
+  reference,
+  reservation_id,
+  guest_id,
+  method,
+  amount,
+  total_due,
+  balance_after,
+  status,
+  payment_date,
+  notes,
+  recorded_by,
+  created_at,
+  updated_at,
+  guest:guests!payments_guest_id_fkey (full_name),
+  reservation:reservations!payments_reservation_id_fkey (
+    reservation_number,
+    room:rooms!reservations_room_id_fkey (room_number)
+  )
+`;
+
 type PaymentRow = DbPayment & {
   guest: DbPaymentWithRelations["guest"] | null;
   reservation: (DbReservationWithRelations & {
@@ -41,6 +65,14 @@ type PaymentRow = DbPayment & {
     room: DbReservationWithRelations["room"] | null;
     room_type: DbReservationWithRelations["room_type"] | null;
   }) | null;
+};
+
+type PaymentAnalyticsRow = DbPayment & {
+  guest: { full_name: string } | null;
+  reservation: {
+    reservation_number: string;
+    room: { room_number: string } | null;
+  } | null;
 };
 
 function toPaymentWithRelations(
@@ -95,6 +127,52 @@ export class SupabasePaymentRepository implements IPaymentRepository {
     return (data ?? [])
       .map((row) => toPaymentWithRelations(row as unknown as PaymentRow))
       .filter((row): row is DbPaymentWithRelations => Boolean(row));
+  }
+
+  async listForAnalytics(): Promise<AnalyticsPaymentListItem[]> {
+    const { data, error } = await this.client
+      .from("payments")
+      .select(PAYMENT_ANALYTICS_SELECT)
+      .order("payment_date", { ascending: false });
+
+    if (error) {
+      throw new Error(`Failed to list payments for analytics: ${error.message}`);
+    }
+
+    const items: AnalyticsPaymentListItem[] = [];
+    for (const raw of data ?? []) {
+      const row = raw as unknown as PaymentAnalyticsRow;
+      if (!row.guest?.full_name || !row.reservation?.reservation_number) {
+        continue;
+      }
+      const roomNumber = row.reservation.room?.room_number;
+      if (!roomNumber) continue;
+
+      const payment = {
+        id: row.id,
+        reference: row.reference,
+        reservation_id: row.reservation_id,
+        guest_id: row.guest_id,
+        method: row.method,
+        amount: row.amount,
+        total_due: row.total_due,
+        balance_after: row.balance_after,
+        status: row.status,
+        payment_date: row.payment_date,
+        notes: row.notes,
+        recorded_by: row.recorded_by,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      } satisfies DbPayment;
+
+      items.push({
+        payment,
+        guestName: row.guest.full_name,
+        reservationNumber: row.reservation.reservation_number,
+        roomNumber,
+      });
+    }
+    return items;
   }
 
   async getByReservationId(

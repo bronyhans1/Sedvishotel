@@ -13,6 +13,19 @@ import { SupabaseReservationRepository } from "@/repositories/supabase/reservati
 import { SupabaseRoomRepository } from "@/repositories/supabase/room.repository";
 import { SupabaseShiftHandoverRepository } from "@/repositories/supabase/shift-handover.repository";
 import type { NightAuditPageData } from "@/types/night-audit";
+import type {
+  DbReservationWithRelations,
+  DbRoomWithType,
+} from "@/types/database";
+
+/**
+ * Request-scoped read set for Night Audit page load.
+ * Exists only for this request — not cached across requests.
+ */
+type NightAuditPageReadSet = {
+  reservations: DbReservationWithRelations[];
+  rooms: DbRoomWithType[];
+};
 
 export async function loadNightAuditPageData(): Promise<
   NightAuditPageData & { access: ReturnType<typeof getNightAuditAccess> }
@@ -28,29 +41,54 @@ export async function loadNightAuditPageData(): Promise<
   }
 
   const service = await getNightAuditService();
-  const [{ businessDate, currentAudit, blockedByOpenAudit }, history] =
+  const client = supabaseEnv.serviceRoleKey
+    ? createAdminClient()
+    : await createServerClient();
+
+  const reservationRepo = new SupabaseReservationRepository(client);
+  const roomRepo = new SupabaseRoomRepository(client);
+
+  const [{ businessDate, currentAudit, blockedByOpenAudit }, history, readSet] =
     await Promise.all([
       service.resolveCurrentDay(ctx, session),
       service.listAudits(ctx, session),
+      (async (): Promise<NightAuditPageReadSet> => {
+        const [reservations, rooms] = await Promise.all([
+          reservationRepo.getAll(),
+          roomRepo.getAll(false),
+        ]);
+        return { reservations, rooms };
+      })(),
     ]);
+
+  const snapshotPrefetch = {
+    reservations: readSet.reservations,
+    rooms: readSet.rooms,
+  };
 
   const snapshotDate =
     currentAudit?.auditDate ?? blockedByOpenAudit?.auditDate ?? businessDate;
   const liveSnapshot =
     currentAudit?.status === "open" || blockedByOpenAudit
-      ? await service.generateSnapshot(ctx, session, snapshotDate)
+      ? await service.generateSnapshot(
+          ctx,
+          session,
+          snapshotDate,
+          snapshotPrefetch
+        )
       : currentAudit
         ? null
-        : await service.generateSnapshot(ctx, session, businessDate);
+        : await service.generateSnapshot(
+            ctx,
+            session,
+            businessDate,
+            snapshotPrefetch
+          );
 
   const overstayWarning =
     currentAudit?.status === "open"
-      ? await service.getOverstayWarning(businessDate)
+      ? await service.getOverstayWarning(businessDate, readSet.reservations)
       : null;
-
-  const client = supabaseEnv.serviceRoleKey
-    ? createAdminClient()
-    : await createServerClient();
 
   const lastClosedAudit =
     history.find((a) => a.status === "closed" && a.closedAt) ?? null;
@@ -61,10 +99,12 @@ export async function loadNightAuditPageData(): Promise<
       businessDate,
       currentAudit,
       lastClosedAudit,
-      reservations: new SupabaseReservationRepository(client),
-      rooms: new SupabaseRoomRepository(client),
+      reservations: reservationRepo,
+      rooms: roomRepo,
       activityLogs: new SupabaseActivityLogRepository(client),
       shiftHandovers: new SupabaseShiftHandoverRepository(client),
+      prefetchedReservations: readSet.reservations,
+      prefetchedRooms: readSet.rooms,
     });
   } catch {
     commandCenter = null;

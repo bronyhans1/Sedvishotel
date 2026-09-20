@@ -20,15 +20,27 @@ export interface CreatePaymentTransactionInput {
   vat_overridden_at?: string | null;
 }
 
+/** Lean payment row for analytics — avoids nested reservation/guest trees. */
+export type AnalyticsPaymentListItem = {
+  payment: DbPayment;
+  guestName: string;
+  reservationNumber: string;
+  roomNumber: string;
+};
+
 export interface IPaymentRepository {
   getAll(): Promise<DbPaymentWithRelations[]>;
+  /** Column-scoped payment list for analytics (no deep joins). */
+  listForAnalytics(): Promise<AnalyticsPaymentListItem[]>;
   getById(id: string): Promise<DbPaymentWithRelations | null>;
   getByReservationId(
     reservationId: string
   ): Promise<DbPaymentWithRelations | null>;
   getTransactions(paymentId: string): Promise<DbPaymentTransaction[]>;
   getTransactionById(id: string): Promise<DbPaymentTransaction | null>;
-  getTransactionsForIds(paymentIds: string[]): Promise<Map<string, DbPaymentTransaction[]>>;
+  getTransactionsForIds(
+    paymentIds: string[]
+  ): Promise<Map<string, DbPaymentTransaction[]>>;
   create(
     payment: Omit<DbPayment, "id" | "created_at" | "updated_at">,
     transaction: CreatePaymentTransactionInput
@@ -47,7 +59,9 @@ export interface IPaymentRepository {
     printCount: number;
     receiptNumber: string;
   }>;
-  getTransactionsForBusinessDate(businessDate: string): Promise<DbPaymentTransaction[]>;
+  getTransactionsForBusinessDate(
+    businessDate: string
+  ): Promise<DbPaymentTransaction[]>;
   commitPaymentAtomically(
     input: import("@/lib/payments/atomic-commit").PaymentAtomicCommitInput
   ): Promise<import("@/lib/payments/atomic-commit").PaymentAtomicCommitResult>;

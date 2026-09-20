@@ -16,6 +16,26 @@ export class SupabaseCorporateAccountRepository implements ICorporateAccountRepo
     return data;
   }
 
+  async getByIds(ids: string[]): Promise<DbCorporateAccount[]> {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (unique.length === 0) return [];
+
+    const rows: DbCorporateAccount[] = [];
+    const chunkSize = 100;
+    for (let i = 0; i < unique.length; i += chunkSize) {
+      const chunk = unique.slice(i, i + chunkSize);
+      const { data, error } = await this.client
+        .from("corporate_accounts")
+        .select("*")
+        .in("id", chunk);
+      if (error) {
+        throw new Error(`Failed to load corporate accounts by ids: ${error.message}`);
+      }
+      rows.push(...(data ?? []));
+    }
+    return rows;
+  }
+
   async getByAccountNumber(accountNumber: string): Promise<DbCorporateAccount | null> {
     const { data, error } = await this.client
       .from("corporate_accounts")

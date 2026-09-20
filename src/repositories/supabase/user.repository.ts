@@ -61,6 +61,27 @@ export class SupabaseUserRepository implements IUserRepository {
     return data;
   }
 
+  async findByIds(ids: string[]): Promise<DbUser[]> {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (unique.length === 0) return [];
+
+    const rows: DbUser[] = [];
+    const chunkSize = 100;
+    for (let i = 0; i < unique.length; i += chunkSize) {
+      const chunk = unique.slice(i, i + chunkSize);
+      const { data, error } = await this.client
+        .from("users")
+        .select("*")
+        .in("id", chunk);
+
+      if (error) {
+        throw new Error(`Failed to load users by ids: ${error.message}`);
+      }
+      rows.push(...(data ?? []));
+    }
+    return rows;
+  }
+
   async findStaffById(profileId: string): Promise<DbStaffWithUser | null> {
     const { data: staffRow, error: staffError } = await this.client
       .from("staff_profiles")

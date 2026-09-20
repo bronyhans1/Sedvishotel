@@ -25,6 +25,27 @@ export class SupabaseReservationBlockRepository implements IReservationBlockRepo
     return data ?? [];
   }
 
+  async listByGroupIds(groupIds: string[]): Promise<DbReservationBlock[]> {
+    const unique = [...new Set(groupIds.filter(Boolean))];
+    if (unique.length === 0) return [];
+
+    const rows: DbReservationBlock[] = [];
+    const chunkSize = 100;
+    for (let i = 0; i < unique.length; i += chunkSize) {
+      const chunk = unique.slice(i, i + chunkSize);
+      const { data, error } = await this.client
+        .from("reservation_blocks")
+        .select("*")
+        .in("group_reservation_id", chunk)
+        .order("created_at", { ascending: true });
+      if (error) {
+        throw new Error(`Failed to list reservation blocks by groups: ${error.message}`);
+      }
+      rows.push(...(data ?? []));
+    }
+    return rows;
+  }
+
   async listActiveBlockedRoomIds(checkIn: string, checkOut: string): Promise<string[]> {
     const now = new Date().toISOString();
     const { data, error } = await this.client

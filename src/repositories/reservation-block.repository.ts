@@ -3,6 +3,8 @@ import type { DbReservationBlock } from "@/types/database";
 export interface IReservationBlockRepository {
   getById(id: string): Promise<DbReservationBlock | null>;
   listByGroup(groupId: string): Promise<DbReservationBlock[]>;
+  /** Batched list for dashboard N+1 elimination. Empty ids → []. */
+  listByGroupIds(groupIds: string[]): Promise<DbReservationBlock[]>;
   listActiveBlockedRoomIds(checkIn: string, checkOut: string): Promise<string[]>;
   listExpiredBlocks(asOf?: string): Promise<DbReservationBlock[]>;
   create(

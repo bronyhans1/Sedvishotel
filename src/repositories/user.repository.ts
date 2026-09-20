@@ -34,6 +34,8 @@ export interface UpdateUserInput {
 
 export interface IUserRepository {
   findById(id: string): Promise<DbUser | null>;
+  /** Batched ID lookup — same user row shape as findById. */
+  findByIds(ids: string[]): Promise<DbUser[]>;
   findStaffById(profileId: string): Promise<DbStaffWithUser | null>;
   findStaffByUserId(userId: string): Promise<DbStaffWithUser | null>;
   findAllStaff(roleId?: DbRoleId): Promise<DbStaffWithUser[]>;

@@ -6,9 +6,15 @@ import type { ICorporateAccountRepository } from "@/repositories/corporate-accou
 import type { IGroupReservationRepository } from "@/repositories/group-reservation.repository";
 import type { IGroupTimelineRepository } from "@/repositories/group-timeline.repository";
 import type { IReservationBlockRepository } from "@/repositories/reservation-block.repository";
-import type { GroupFinancialSummary, GroupReservationSummary } from "@/types/group-reservation";
+import type { DbCorporateAccount, DbReservationWithRelations } from "@/types/database";
+import type {
+  GroupFinancialSummary,
+  GroupReservation,
+  GroupReservationSummary,
+} from "@/types/group-reservation";
 import type { GroupTimelineEvent } from "@/types/group-timeline";
 import type { Reservation } from "@/types/reservation";
+import type { ReservationBlock } from "@/types/reservation-block";
 
 export type GroupOperationsOverview = {
   group: GroupReservationSummary["group"];
@@ -47,26 +53,36 @@ export type GroupOperationsOverview = {
   reservations: Reservation[];
 };
 
-export async function buildGroupOperationsOverview(
-  deps: {
-    groups: IGroupReservationRepository;
-    blocks: IReservationBlockRepository;
-    timeline: IGroupTimelineRepository;
-    corporate: ICorporateAccountRepository;
-  },
-  groupId: string,
-  summary: GroupReservationSummary,
-  financial: GroupFinancialSummary | null,
-  timelineEvents: GroupTimelineEvent[],
-  businessDate?: string
-): Promise<GroupOperationsOverview> {
-  const today = businessDate ?? (await getCurrentBusinessDate());
-  const groupRow = await deps.groups.getById(groupId);
-  const group = groupRow
-    ? mapDbGroupReservationToGroupReservation(groupRow)
-    : summary.group;
+/** Prefetched inputs — skips per-group repository round-trips. */
+export type GroupOperationsOverviewPrefetch = {
+  group: GroupReservation;
+  reservationRows: DbReservationWithRelations[];
+  blocks: ReservationBlock[];
+  corporate: DbCorporateAccount | null;
+  businessDate: string;
+};
 
-  const reservationRows = await deps.groups.listReservations(groupId);
+function buildOverviewFromResolved(input: {
+  group: GroupReservation;
+  summary: GroupReservationSummary;
+  financial: GroupFinancialSummary | null;
+  timelineEvents: GroupTimelineEvent[];
+  reservationRows: DbReservationWithRelations[];
+  blocks: ReservationBlock[];
+  corporate: DbCorporateAccount | null;
+  today: string;
+}): GroupOperationsOverview {
+  const {
+    group,
+    summary,
+    financial,
+    timelineEvents,
+    reservationRows,
+    blocks,
+    corporate,
+    today,
+  } = input;
+
   const reservations = reservationRows.map(mapDbReservationToReservation);
 
   const vipGuests = reservationRows.filter((r) => r.guest?.vip_status).length;
@@ -88,14 +104,20 @@ export async function buildGroupOperationsOverview(
       r.status !== "checked_out"
   ).length;
 
-  const issueCreated = timelineEvents.filter((e) => e.eventType === "issue_created").length;
-  const issueClosed = timelineEvents.filter((e) => e.eventType === "issue_closed").length;
+  const issueCreated = timelineEvents.filter(
+    (e) => e.eventType === "issue_created"
+  ).length;
+  const issueClosed = timelineEvents.filter(
+    (e) => e.eventType === "issue_closed"
+  ).length;
   const outstandingIssues = Math.max(0, issueCreated - issueClosed);
 
   const roomsAssigned = reservations.filter(
     (r) => r.roomNumber && r.status !== "cancelled"
   ).length;
-  const roomsOccupied = reservations.filter((r) => r.status === "checked_in").length;
+  const roomsOccupied = reservations.filter(
+    (r) => r.status === "checked_in"
+  ).length;
   const roomsReserved = summary.reservationCount;
   const roomsRemaining = Math.max(0, group.expectedRooms - roomsAssigned);
 
@@ -119,8 +141,6 @@ export async function buildGroupOperationsOverview(
     group.expectedGuests - summary.checkedInCount - summary.checkedOutCount
   );
 
-  const blockRows = await deps.blocks.listByGroup(groupId);
-  const blocks = blockRows.map(mapDbReservationBlockToReservationBlock);
   const activeBlockCount = blocks.filter((b) => b.status === "blocked").length;
   const expiringBlocks = blocks.filter((b) => {
     if (b.status !== "blocked") return false;
@@ -129,23 +149,22 @@ export async function buildGroupOperationsOverview(
     return hold <= in24h;
   }).length;
 
-  let corporateCreditStatus: GroupOperationsOverview["corporateCreditStatus"] = "none";
+  let corporateCreditStatus: GroupOperationsOverview["corporateCreditStatus"] =
+    "none";
   let corporateOutstanding = 0;
   let corporateCreditLimit: number | null = null;
 
-  if (group.corporateAccountId) {
-    const corp = await deps.corporate.getById(group.corporateAccountId);
-    if (corp) {
-      corporateCreditLimit = corp.credit_limit != null ? Number(corp.credit_limit) : null;
-      corporateOutstanding = financial?.outstandingBalance ?? 0;
-      if (corporateCreditLimit != null) {
-        if (corporateOutstanding > corporateCreditLimit) {
-          corporateCreditStatus = "exceeded";
-        } else if (corporateOutstanding > corporateCreditLimit * 0.8) {
-          corporateCreditStatus = "warning";
-        } else {
-          corporateCreditStatus = "ok";
-        }
+  if (group.corporateAccountId && corporate) {
+    corporateCreditLimit =
+      corporate.credit_limit != null ? Number(corporate.credit_limit) : null;
+    corporateOutstanding = financial?.outstandingBalance ?? 0;
+    if (corporateCreditLimit != null) {
+      if (corporateOutstanding > corporateCreditLimit) {
+        corporateCreditStatus = "exceeded";
+      } else if (corporateOutstanding > corporateCreditLimit * 0.8) {
+        corporateCreditStatus = "warning";
+      } else {
+        corporateCreditStatus = "ok";
       }
     }
   }
@@ -194,4 +213,58 @@ export async function buildGroupOperationsOverview(
     recentActivity: timelineEvents.slice(0, 8),
     reservations,
   };
+}
+
+export async function buildGroupOperationsOverview(
+  deps: {
+    groups: IGroupReservationRepository;
+    blocks: IReservationBlockRepository;
+    timeline: IGroupTimelineRepository;
+    corporate: ICorporateAccountRepository;
+  },
+  groupId: string,
+  summary: GroupReservationSummary,
+  financial: GroupFinancialSummary | null,
+  timelineEvents: GroupTimelineEvent[],
+  businessDate?: string,
+  prefetch?: GroupOperationsOverviewPrefetch
+): Promise<GroupOperationsOverview> {
+  if (prefetch) {
+    return buildOverviewFromResolved({
+      group: prefetch.group,
+      summary,
+      financial,
+      timelineEvents,
+      reservationRows: prefetch.reservationRows,
+      blocks: prefetch.blocks,
+      corporate: prefetch.corporate,
+      today: prefetch.businessDate,
+    });
+  }
+
+  const today = businessDate ?? (await getCurrentBusinessDate());
+  const groupRow = await deps.groups.getById(groupId);
+  const group = groupRow
+    ? mapDbGroupReservationToGroupReservation(groupRow)
+    : summary.group;
+
+  const reservationRows = await deps.groups.listReservations(groupId);
+  const blockRows = await deps.blocks.listByGroup(groupId);
+  const blocks = blockRows.map(mapDbReservationBlockToReservationBlock);
+
+  let corporate: DbCorporateAccount | null = null;
+  if (group.corporateAccountId) {
+    corporate = await deps.corporate.getById(group.corporateAccountId);
+  }
+
+  return buildOverviewFromResolved({
+    group,
+    summary,
+    financial,
+    timelineEvents,
+    reservationRows,
+    blocks,
+    corporate,
+    today,
+  });
 }
