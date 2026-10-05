@@ -1,5 +1,14 @@
+import {
+  activityLogSearchOrFilter,
+  resolveActivityLogTextSearch,
+} from "@/lib/logs/search";
+import {
+  ACTIVITY_LOG_KPI_ACTION_INCLUDES,
+  utcActivityLogDayWindow,
+} from "@/lib/logs/utc-day";
 import type {
   ActivityLogFilters,
+  ActivityLogUtcDayCounts,
   CreateActivityLogInput,
   IActivityLogRepository,
 } from "@/repositories/activity-log.repository";
@@ -75,6 +84,12 @@ export class SupabaseActivityLogRepository implements IActivityLogRepository {
     if (filters?.dateTo) {
       query = query.lte("created_at", `${filters.dateTo}T23:59:59.999Z`);
     }
+    const textSearch = filters?.search
+      ? resolveActivityLogTextSearch(filters.search)
+      : null;
+    if (textSearch) {
+      query = query.or(activityLogSearchOrFilter(textSearch));
+    }
 
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
@@ -91,6 +106,47 @@ export class SupabaseActivityLogRepository implements IActivityLogRepository {
       total: count ?? 0,
       page,
       pageSize,
+    };
+  }
+
+  async countUtcCalendarDay(day: string): Promise<ActivityLogUtcDayCounts> {
+    const window = utcActivityLogDayWindow(new Date(`${day}T12:00:00.000Z`));
+    const countWhere = async (actionIncludes?: string) => {
+      let query = this.client
+        .from("activity_logs")
+        .select("id", { count: "exact", head: true })
+        .gte("created_at", window.start)
+        .lt("created_at", window.endExclusive);
+      if (actionIncludes) {
+        query = query.like("action_code", `%${actionIncludes}%`);
+      }
+      const { count, error } = await query;
+      if (error) {
+        throw new Error(`Failed to count activity logs: ${error.message}`);
+      }
+      return count ?? 0;
+    };
+
+    const [
+      actionsToday,
+      reservationsCreated,
+      paymentsRecorded,
+      checkIns,
+      checkOuts,
+    ] = await Promise.all([
+      countWhere(),
+      countWhere(ACTIVITY_LOG_KPI_ACTION_INCLUDES.reservationsCreated),
+      countWhere(ACTIVITY_LOG_KPI_ACTION_INCLUDES.paymentsRecorded),
+      countWhere(ACTIVITY_LOG_KPI_ACTION_INCLUDES.checkIns),
+      countWhere(ACTIVITY_LOG_KPI_ACTION_INCLUDES.checkOuts),
+    ]);
+
+    return {
+      actionsToday,
+      reservationsCreated,
+      paymentsRecorded,
+      checkIns,
+      checkOuts,
     };
   }
 

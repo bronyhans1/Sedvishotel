@@ -1,3 +1,11 @@
+import type {
+  OperationalPaymentRow,
+  OperationalTransactionAmount,
+} from "@/lib/payments/operational-summary";
+import {
+  normalizePaymentSearch,
+  paymentSearchLikePattern,
+} from "@/lib/payments/search";
 import { isUuid } from "@/lib/payments/mapper";
 import {
   buildPaymentCommitPayload,
@@ -16,6 +24,7 @@ import type {
   CreatePaymentTransactionInput,
   IPaymentRepository,
 } from "@/repositories/payment.repository";
+import type { PaginatedResult } from "@/repositories/types";
 import type { SupabaseServerClient } from "@/lib/supabase/server";
 import type {
   DbPayment,
@@ -34,6 +43,39 @@ const PAYMENT_SELECT = `
     room_type:room_types!reservations_room_type_id_fkey (*)
   )
 `;
+
+/** Same relations as the payment list, required so incomplete rows stay hidden. */
+const PAYMENT_LIST_SELECT = `
+  *,
+  guest:guests!payments_guest_id_fkey!inner (*),
+  reservation:reservations!payments_reservation_id_fkey!inner (
+    *,
+    guest:guests!reservations_guest_id_fkey!inner (*),
+    room:rooms!reservations_room_id_fkey!inner (*),
+    room_type:room_types!reservations_room_type_id_fkey!inner (*)
+  )
+`;
+
+const PAYMENT_OPERATIONAL_SELECT = `
+  id,
+  reference,
+  reservation_id,
+  status,
+  payment_date,
+  balance_after,
+  total_due,
+  created_at,
+  guest:guests!payments_guest_id_fkey!inner (id),
+  reservation:reservations!payments_reservation_id_fkey!inner (
+    id,
+    guest:guests!reservations_guest_id_fkey!inner (id),
+    room:rooms!reservations_room_id_fkey!inner (id),
+    room_type:room_types!reservations_room_type_id_fkey!inner (id)
+  )
+`;
+
+const READ_BATCH = 1000;
+const IN_CHUNK = 100;
 
 /** Analytics: payment row + display labels only (no nested guest/room_type trees). */
 const PAYMENT_ANALYTICS_SELECT = `
@@ -95,6 +137,25 @@ function toPaymentWithRelations(
   };
 }
 
+function chunkValues<T>(values: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function comparePaymentOrder(
+  a: { payment_date: string; created_at: string; id: string },
+  b: { payment_date: string; created_at: string; id: string }
+): number {
+  const byDate = b.payment_date.localeCompare(a.payment_date);
+  if (byDate !== 0) return byDate;
+  const byCreated = b.created_at.localeCompare(a.created_at);
+  if (byCreated !== 0) return byCreated;
+  return b.id.localeCompare(a.id);
+}
+
 function mapTransactionInsertFields(transaction: CreatePaymentTransactionInput) {
   return {
     description: transaction.description,
@@ -127,6 +188,301 @@ export class SupabasePaymentRepository implements IPaymentRepository {
     return (data ?? [])
       .map((row) => toPaymentWithRelations(row as unknown as PaymentRow))
       .filter((row): row is DbPaymentWithRelations => Boolean(row));
+  }
+
+  async listPage(input: {
+    page: number;
+    pageSize: number;
+    search?: string;
+  }): Promise<PaginatedResult<DbPaymentWithRelations>> {
+    const page = input.page > 0 ? Math.floor(input.page) : 1;
+    const pageSize = input.pageSize > 0 ? Math.floor(input.pageSize) : 25;
+    const search = normalizePaymentSearch(input.search);
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    if (!search) {
+      const [countResult, dataResult] = await Promise.all([
+        this.client
+          .from("payments")
+          .select(PAYMENT_OPERATIONAL_SELECT, { count: "exact", head: true }),
+        this.client
+          .from("payments")
+          .select(PAYMENT_LIST_SELECT)
+          .order("payment_date", { ascending: false })
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      ]);
+
+      if (countResult.error) {
+        throw new Error(`Failed to count payments: ${countResult.error.message}`);
+      }
+      if (dataResult.error) {
+        throw new Error(`Failed to list payments: ${dataResult.error.message}`);
+      }
+
+      return {
+        data: (dataResult.data ?? [])
+          .map((row) => toPaymentWithRelations(row as unknown as PaymentRow))
+          .filter((row): row is DbPaymentWithRelations => Boolean(row)),
+        total: countResult.count ?? 0,
+        page,
+        pageSize,
+      };
+    }
+
+    const ordered = await this.listVisiblePaymentOrder(search);
+    const pageKeys = ordered.slice(from, to + 1);
+    if (pageKeys.length === 0) {
+      return { data: [], total: ordered.length, page, pageSize };
+    }
+
+    const { data, error } = await this.client
+      .from("payments")
+      .select(PAYMENT_LIST_SELECT)
+      .in(
+        "id",
+        pageKeys.map((row) => row.id)
+      );
+
+    if (error) {
+      throw new Error(`Failed to list payments: ${error.message}`);
+    }
+
+    const byId = new Map<string, DbPaymentWithRelations>();
+    for (const raw of data ?? []) {
+      const row = toPaymentWithRelations(raw as unknown as PaymentRow);
+      if (row) byId.set(row.id, row);
+    }
+
+    return {
+      data: pageKeys.flatMap((key) => {
+        const row = byId.get(key.id);
+        return row ? [row] : [];
+      }),
+      total: ordered.length,
+      page,
+      pageSize,
+    };
+  }
+
+  async listOperationalRows(): Promise<OperationalPaymentRow[]> {
+    const rows: OperationalPaymentRow[] = [];
+    for (let offset = 0; ; offset += READ_BATCH) {
+      const { data, error } = await this.client
+        .from("payments")
+        .select(PAYMENT_OPERATIONAL_SELECT)
+        .order("id", { ascending: true })
+        .range(offset, offset + READ_BATCH - 1);
+
+      if (error) {
+        throw new Error(`Failed to load payment statistics rows: ${error.message}`);
+      }
+
+      const batch = data ?? [];
+      for (const raw of batch) {
+        const row = raw as unknown as {
+          id: string;
+          reference: string;
+          reservation_id: string;
+          status: OperationalPaymentRow["status"];
+          payment_date: string;
+          balance_after: number | string;
+          total_due: number | string;
+          created_at: string;
+        };
+        rows.push({
+          id: row.id,
+          reference: row.reference,
+          reservationId: row.reservation_id,
+          status: row.status,
+          paymentDate: row.payment_date,
+          balanceAfter: row.balance_after,
+          totalDue: row.total_due,
+          createdAt: row.created_at,
+        });
+      }
+      if (batch.length < READ_BATCH) break;
+    }
+    return rows;
+  }
+
+  async listTransactionAmounts(): Promise<OperationalTransactionAmount[]> {
+    const amounts: OperationalTransactionAmount[] = [];
+    for (let offset = 0; ; offset += READ_BATCH) {
+      const { data, error } = await this.client
+        .from("payment_transactions")
+        .select("id, payment_id, amount")
+        .order("id", { ascending: true })
+        .range(offset, offset + READ_BATCH - 1);
+
+      if (error) {
+        throw new Error(`Failed to load payment transaction amounts: ${error.message}`);
+      }
+
+      const batch = data ?? [];
+      for (const row of batch) {
+        amounts.push({ paymentId: row.payment_id, amount: row.amount });
+      }
+      if (batch.length < READ_BATCH) break;
+    }
+    return amounts;
+  }
+
+  private async listVisiblePaymentOrder(
+    search: string
+  ): Promise<{ id: string; payment_date: string; created_at: string }[]> {
+    const ids = await this.findPaymentIdsForSearch(search);
+    if (ids.length === 0) return [];
+
+    const keys: { id: string; payment_date: string; created_at: string }[] = [];
+    for (const idChunk of chunkValues(ids, IN_CHUNK)) {
+      for (let offset = 0; ; offset += READ_BATCH) {
+        const { data, error } = await this.client
+          .from("payments")
+          .select(PAYMENT_OPERATIONAL_SELECT)
+          .in("id", idChunk)
+          .order("id", { ascending: true })
+          .range(offset, offset + READ_BATCH - 1);
+
+        if (error) {
+          throw new Error(`Failed to order searched payments: ${error.message}`);
+        }
+
+        const batch = data ?? [];
+        for (const raw of batch) {
+          const row = raw as unknown as {
+            id: string;
+            payment_date: string;
+            created_at: string;
+          };
+          keys.push({
+            id: row.id,
+            payment_date: row.payment_date,
+            created_at: row.created_at,
+          });
+        }
+        if (batch.length < READ_BATCH) break;
+      }
+    }
+
+    keys.sort(comparePaymentOrder);
+    return keys;
+  }
+
+  private async findPaymentIdsForSearch(search: string): Promise<string[]> {
+    const pattern = paymentSearchLikePattern(search);
+    const [byReference, guestIds, reservationIds, roomIds] = await Promise.all([
+      this.collectIds(
+        (from, to) =>
+          this.client
+            .from("payments")
+            .select("id")
+            .ilike("reference", pattern)
+            .order("id", { ascending: true })
+            .range(from, to),
+        "payment references"
+      ),
+      this.collectIds(
+        (from, to) =>
+          this.client
+            .from("guests")
+            .select("id")
+            .ilike("full_name", pattern)
+            .order("id", { ascending: true })
+            .range(from, to),
+        "guest names"
+      ),
+      this.collectIds(
+        (from, to) =>
+          this.client
+            .from("reservations")
+            .select("id")
+            .ilike("reservation_number", pattern)
+            .order("id", { ascending: true })
+            .range(from, to),
+        "reservation numbers"
+      ),
+      this.collectIds(
+        (from, to) =>
+          this.client
+            .from("rooms")
+            .select("id")
+            .like("room_number", pattern)
+            .order("id", { ascending: true })
+            .range(from, to),
+        "room numbers"
+      ),
+    ]);
+
+    const reservationIdsForRooms = await this.collectIdsByColumn(
+      "reservations",
+      "room_id",
+      roomIds,
+      "reservations for rooms"
+    );
+    const [byGuest, byReservation, byRoom] = await Promise.all([
+      this.collectIdsByColumn("payments", "guest_id", guestIds, "payments for guests"),
+      this.collectIdsByColumn(
+        "payments",
+        "reservation_id",
+        reservationIds,
+        "payments for reservations"
+      ),
+      this.collectIdsByColumn(
+        "payments",
+        "reservation_id",
+        reservationIdsForRooms,
+        "payments for rooms"
+      ),
+    ]);
+
+    return [...new Set([...byReference, ...byGuest, ...byReservation, ...byRoom])];
+  }
+
+  private async collectIds(
+    load: (
+      from: number,
+      to: number
+    ) => PromiseLike<{ data: { id: string }[] | null; error: { message: string } | null }>,
+    label: string
+  ): Promise<string[]> {
+    const ids: string[] = [];
+    for (let offset = 0; ; offset += READ_BATCH) {
+      const { data, error } = await load(offset, offset + READ_BATCH - 1);
+      if (error) {
+        throw new Error(`Failed to search ${label}: ${error.message}`);
+      }
+      const batch = data ?? [];
+      for (const row of batch) ids.push(row.id);
+      if (batch.length < READ_BATCH) break;
+    }
+    return ids;
+  }
+
+  private async collectIdsByColumn(
+    table: "payments" | "reservations",
+    column: "guest_id" | "reservation_id" | "room_id",
+    foreignIds: string[],
+    label: string
+  ): Promise<string[]> {
+    if (foreignIds.length === 0) return [];
+    const ids: string[] = [];
+    for (const foreignChunk of chunkValues(foreignIds, IN_CHUNK)) {
+      const matched = await this.collectIds((from, to) => {
+        const query = this.client.from(table).select("id").order("id", { ascending: true });
+        if (column === "guest_id") {
+          return query.in("guest_id", foreignChunk).range(from, to);
+        }
+        if (column === "reservation_id") {
+          return query.in("reservation_id", foreignChunk).range(from, to);
+        }
+        return query.in("room_id", foreignChunk).range(from, to);
+      }, label);
+      ids.push(...matched);
+    }
+    return ids;
   }
 
   async listForAnalytics(): Promise<AnalyticsPaymentListItem[]> {

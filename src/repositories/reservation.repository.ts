@@ -1,9 +1,12 @@
+import type { ReservationListFilters } from "@/lib/reservations/list-order";
 import type { BaseRepository } from "@/repositories/base.repository";
+import type { PaginatedResult } from "@/repositories/types";
 import type {
   DbReservation,
   DbReservationGuestRole,
   DbReservationWithRelations,
 } from "@/types/database";
+import type { ReservationStats } from "@/types/reservation";
 
 export interface AvailabilityQuery {
   checkIn: string;
@@ -29,6 +32,20 @@ export type ExtendStayAvailabilityResult =
 
 export interface IReservationRepository {
   getAll(): Promise<DbReservationWithRelations[]>;
+  /**
+   * One operational page for the reservations screen.
+   * Does not change getAll().
+   */
+  listPage(input: {
+    page: number;
+    pageSize: number;
+    businessDate: string;
+    filters: ReservationListFilters;
+  }): Promise<PaginatedResult<DbReservationWithRelations>>;
+  /** Status counts for every visible reservation, ignoring list filters and page. */
+  countListStats(): Promise<ReservationStats>;
+  /** Room-type labels present on visible reservations, for the list filter. */
+  listVisibleRoomTypeOptions(): Promise<{ id: string; name: string }[]>;
   /** Leaner relation select for analytics computes (same reservation rows). */
   listForAnalytics(): Promise<DbReservationWithRelations[]>;
   getById(id: string): Promise<DbReservationWithRelations | null>;

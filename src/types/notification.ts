@@ -22,3 +22,9 @@ export type Notification = {
   entityId: string | null;
   entityType: string | null;
 };
+
+/** Navbar bell payload. Preview is a short newest-first list, not read history. */
+export type NotificationBellData = {
+  preview: Notification[];
+  unreadCount: number;
+};

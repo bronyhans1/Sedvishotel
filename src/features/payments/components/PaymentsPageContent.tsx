@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, Pencil, Plus } from "lucide-react";
 
 import { PaymentEmptyState } from "@/components/payments/PaymentEmptyState";
@@ -10,11 +11,13 @@ import { PaymentStatusBadge } from "@/components/payments/PaymentStatusBadge";
 import { PaymentReceiptActions } from "@/components/payments/PaymentReceiptActions";
 import { RecordPaymentModal } from "@/components/payments/RecordPaymentModal";
 import { PageContainer } from "@/components/shared/PageContainer";
+import { Pagination } from "@/components/shared/Pagination";
 import { StatCard } from "@/components/shared/StatCard";
 import { Button } from "@/components/ui/button";
 import type { PaymentRecordOption } from "@/features/payments/load-payments-page";
 import type { PaymentAccess } from "@/lib/auth/payment-access.types";
 import type { ReceiptBranding } from "@/lib/receipt/receipt-core";
+import { buildPageHref, resetPageParam } from "@/lib/pagination/pagination";
 import { formatCurrency } from "@/lib/utils";
 import { siteConfig } from "@/config/site";
 import {
@@ -29,34 +32,73 @@ import type { Payment, PaymentStats } from "@/types/payment";
 
 type PaymentsPageContentProps = {
   payments: Payment[];
+  total: number;
+  page: number;
+  pageSize: number;
+  search: string;
   stats: PaymentStats;
   access: PaymentAccess;
   recordOptions: PaymentRecordOption;
   receiptBranding: ReceiptBranding;
+  businessDate: string;
 };
 
 export function PaymentsPageContent({
   payments,
+  total,
+  page,
+  pageSize,
+  search,
   stats,
   access,
   recordOptions,
   receiptBranding,
+  businessDate,
 }: PaymentsPageContentProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [recordOpen, setRecordOpen] = useState(false);
-  const [search, setSearch] = useState("");
+  const [draft, setDraft] = useState(search);
   const [, startTransition] = useTransition();
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return payments;
-    return payments.filter(
-      (p) =>
-        p.reference.toLowerCase().includes(q) ||
-        p.guestName.toLowerCase().includes(q) ||
-        p.reservationNumber.toLowerCase().includes(q) ||
-        p.roomNumber.includes(q)
-    );
-  }, [payments, search]);
+  useEffect(() => {
+    setDraft(search);
+  }, [search]);
+
+  useEffect(() => {
+    if (draft.trim() === search.trim()) return;
+
+    const handle = window.setTimeout(() => {
+      const params = resetPageParam(new URLSearchParams(searchParams.toString()));
+      const nextSearch = draft.trim();
+      if (nextSearch) params.set("search", nextSearch);
+      else params.delete("search");
+      const query = params.toString();
+      startTransition(() => {
+        router.push(query ? `/dashboard/payments?${query}` : "/dashboard/payments");
+      });
+    }, 400);
+
+    return () => window.clearTimeout(handle);
+  }, [draft, router, search, searchParams]);
+
+  function goToPage(nextPage: number) {
+    startTransition(() => {
+      router.push(
+        buildPageHref("/dashboard/payments", searchParams.toString(), nextPage)
+      );
+    });
+  }
+
+  function clearSearch() {
+    startTransition(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("search");
+      params.delete("page");
+      const query = params.toString();
+      router.push(query ? `/dashboard/payments?${query}` : "/dashboard/payments");
+    });
+  }
 
   return (
     <PageContainer
@@ -83,19 +125,15 @@ export function PaymentsPageContent({
       <input
         type="search"
         placeholder="Search reference, guest, reservation..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
         className="flex h-9 w-full max-w-md rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
       />
 
-      {filtered.length === 0 ? (
+      {total === 0 ? (
         <PaymentEmptyState
-          variant={payments.length === 0 ? "no-payments" : "no-results"}
-          onClear={
-            search
-              ? () => startTransition(() => setSearch(""))
-              : undefined
-          }
+          variant={stats.totalPayments === 0 ? "no-payments" : "no-results"}
+          onClear={search ? clearSearch : undefined}
         />
       ) : (
         <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
@@ -116,7 +154,7 @@ export function PaymentsPageContent({
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filtered.map((p) => (
+                {payments.map((p) => (
                   <tr key={p.id} className="hover:bg-muted/30">
                     <td className="px-4 py-3 font-mono text-xs">{p.reference}</td>
                     <td className="px-4 py-3 font-medium">{p.guestName}</td>
@@ -146,6 +184,17 @@ export function PaymentsPageContent({
               </tbody>
             </table>
           </div>
+          {total > pageSize ? (
+            <div className="border-t px-4 py-3">
+              <Pagination
+                page={page}
+                total={total}
+                pageSize={pageSize}
+                itemLabel="payments"
+                onPageChange={goToPage}
+              />
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -161,6 +210,7 @@ export function PaymentsPageContent({
           defaultVatApplied={recordOptions.defaultVatApplied}
           canOverrideVat={access.canOverrideVat}
           receiptBranding={receiptBranding}
+          businessDate={businessDate}
         />
       )}
     </PageContainer>

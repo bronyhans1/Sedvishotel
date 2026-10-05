@@ -1,13 +1,14 @@
 "use client";
 
 import { useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Bell, CheckCheck, Trash2 } from "lucide-react";
 
 import { NotificationEmptyState } from "@/components/notifications/NotificationEmptyState";
 import { NotificationPriorityBadge } from "@/components/notifications/NotificationPriorityBadge";
 import { PageContainer } from "@/components/shared/PageContainer";
+import { Pagination } from "@/components/shared/Pagination";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -19,6 +20,7 @@ import { useSyncedProp } from "@/hooks/use-synced-prop";
 import { useToast } from "@/hooks/use-toast";
 import { formatModuleLabel } from "@/lib/activity/labels";
 import { resolveNotificationHref } from "@/lib/notifications/operational-notifications";
+import { buildPageHref } from "@/lib/pagination/pagination";
 import { siteConfig } from "@/config/site";
 import type { Notification } from "@/types/notification";
 
@@ -83,13 +85,29 @@ function NotificationItem({
 }
 
 type Props = {
-  notifications: Notification[];
+  unreadNotifications: Notification[];
+  unreadCount: number;
+  readNotifications: Notification[];
+  readTotal: number;
+  readPage: number;
+  readPageSize: number;
 };
 
-export function NotificationsPageContent({ notifications: initial }: Props) {
+export function NotificationsPageContent({
+  unreadNotifications,
+  unreadCount,
+  readNotifications,
+  readTotal,
+  readPage,
+  readPageSize,
+}: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const toast = useToast();
-  const [items, setItems] = useSyncedProp(initial);
+  const [unread, setUnread] = useSyncedProp(unreadNotifications);
+  const [unreadTotal, setUnreadTotal] = useSyncedProp(unreadCount);
+  const [read, setRead] = useSyncedProp(readNotifications);
+  const [readHistoryTotal, setReadHistoryTotal] = useSyncedProp(readTotal);
   const [isPending, startTransition] = useTransition();
 
   const refresh = () => {
@@ -98,16 +116,20 @@ export function NotificationsPageContent({ notifications: initial }: Props) {
     });
   };
 
-  const unread = items.filter((n) => !n.read);
-  const read = items.filter((n) => n.read);
+  const goToReadPage = (nextPage: number) => {
+    startTransition(() => {
+      router.push(
+        buildPageHref("/dashboard/notifications", searchParams.toString(), nextPage)
+      );
+    });
+  };
 
   const markRead = (notification: Notification) => {
     startTransition(async () => {
       const result = await openNotificationAction(notification.id);
       if (result.success) {
-        setItems((prev) =>
-          prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n))
-        );
+        setUnread((prev) => prev.filter((n) => n.id !== notification.id));
+        setUnreadTotal((count) => Math.max(0, count - 1));
         const href = resolveNotificationHref(notification);
         if (href) {
           router.push(href);
@@ -123,7 +145,12 @@ export function NotificationsPageContent({ notifications: initial }: Props) {
     startTransition(async () => {
       const result = await deleteNotificationAction(id);
       if (result.success) {
-        setItems((prev) => prev.filter((n) => n.id !== id));
+        const removedUnread = unread.some((n) => n.id === id);
+        const removedRead = read.some((n) => n.id === id);
+        setUnread((prev) => prev.filter((n) => n.id !== id));
+        setRead((prev) => prev.filter((n) => n.id !== id));
+        if (removedUnread) setUnreadTotal((count) => Math.max(0, count - 1));
+        if (removedRead) setReadHistoryTotal((count) => Math.max(0, count - 1));
         refresh();
       } else {
         toast.error(result.error);
@@ -135,7 +162,8 @@ export function NotificationsPageContent({ notifications: initial }: Props) {
     startTransition(async () => {
       const result = await markAllNotificationsReadAction();
       if (result.success) {
-        setItems((prev) => prev.map((n) => ({ ...n, read: true })));
+        setUnread([]);
+        setUnreadTotal(0);
         toast.celebrate("All Read", "All notifications marked as read.");
         refresh();
       } else {
@@ -149,7 +177,7 @@ export function NotificationsPageContent({ notifications: initial }: Props) {
       title="Notifications"
       description={`Alerts and updates for ${siteConfig.name}.`}
       actions={
-        unread.length > 0 ? (
+        unreadTotal > 0 ? (
           <Button size="sm" variant="outline" onClick={markAllRead} disabled={isPending}>
             <CheckCheck className="h-4 w-4" />
             {isPending ? "Updating…" : "Mark all read"}
@@ -161,7 +189,7 @@ export function NotificationsPageContent({ notifications: initial }: Props) {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Bell className="h-5 w-5" />
-            Unread ({unread.length})
+            Unread ({unreadTotal})
           </CardTitle>
           <Button variant="ghost" size="sm" asChild>
             <Link href="/dashboard/audit">Audit dashboard</Link>
@@ -180,10 +208,10 @@ export function NotificationsPageContent({ notifications: initial }: Props) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Read ({read.length})</CardTitle>
+          <CardTitle className="text-lg">Read ({readHistoryTotal})</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {read.length === 0 ? (
+          {readHistoryTotal === 0 ? (
             <p className="py-4 text-center text-sm text-muted-foreground">
               No read notifications yet
             </p>
@@ -192,6 +220,13 @@ export function NotificationsPageContent({ notifications: initial }: Props) {
               <NotificationItem key={n.id} item={n} onOpen={markRead} onDelete={deleteItem} />
             ))
           )}
+          <Pagination
+            page={readPage}
+            total={readHistoryTotal}
+            pageSize={readPageSize}
+            itemLabel="notifications"
+            onPageChange={goToReadPage}
+          />
         </CardContent>
       </Card>
     </PageContainer>

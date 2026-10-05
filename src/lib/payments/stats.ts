@@ -1,5 +1,11 @@
 import type { Payment, PaymentStats } from "@/types/payment";
 
+/** Fields the payment KPIs actually read. The formulas below are unchanged. */
+export type PaymentStatsSource = Pick<
+  Payment,
+  "netPaid" | "paymentDate" | "balance" | "status" | "refundCount"
+>;
+
 function startOfWeek(date: Date): Date {
   const d = new Date(date);
   const day = d.getDay();
@@ -13,16 +19,16 @@ function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
-function paymentNetRevenue(payment: Payment): number {
+function paymentNetRevenue(payment: PaymentStatsSource): number {
   return payment.netPaid;
 }
 
-function isRevenueCountable(payment: Payment): boolean {
+function isRevenueCountable(payment: PaymentStatsSource): boolean {
   return payment.netPaid > 0;
 }
 
 export function computePaymentStats(
-  payments: Payment[],
+  payments: readonly PaymentStatsSource[],
   asOfDate?: string
 ): PaymentStats {
   const now = asOfDate ? new Date(`${asOfDate}T12:00:00`) : new Date();

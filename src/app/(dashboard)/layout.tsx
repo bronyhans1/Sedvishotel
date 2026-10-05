@@ -56,7 +56,9 @@ export default async function DashboardLayout({
   const branding = await loadBranding();
   const currencyConfig = await getCurrencyConfig();
   setRuntimeCurrencyConfig(currencyConfig);
-  const notifications = currentUser ? await loadNavbarNotifications() : [];
+  const notifications = currentUser
+    ? await loadNavbarNotifications()
+    : { preview: [], unreadCount: 0 };
   const [shiftHandoverAttention, pendingHandoverReview] = currentUser
     ? await Promise.all([
         loadShiftHandoverAttentionCount(),

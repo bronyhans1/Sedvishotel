@@ -87,6 +87,11 @@ export function formatModuleLabel(module: string): string {
   return MODULE_LABELS[module] ?? humanizeLabel(module);
 }
 
+/** Stored module keys that have a curated activity-log label. */
+export function activityModuleKeys(): string[] {
+  return Object.keys(MODULE_LABELS);
+}
+
 export function formatLogStatusLabel(status: string): string {
   return LOG_STATUS_LABELS[status] ?? humanizeLabel(status);
 }

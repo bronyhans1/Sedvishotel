@@ -1,18 +1,20 @@
 import { getServiceContextForPage } from "@/lib/auth/service-context";
 import { getNotificationService } from "@/lib/notifications/get-notification-service";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import type { Notification } from "@/types/notification";
+import type { NotificationBellData } from "@/types/notification";
 
-export async function loadNavbarNotifications(): Promise<Notification[]> {
+const EMPTY_BELL: NotificationBellData = { preview: [], unreadCount: 0 };
+
+export async function loadNavbarNotifications(): Promise<NotificationBellData> {
   if (!isSupabaseConfigured()) {
-    return [];
+    return EMPTY_BELL;
   }
 
   try {
     const { session, ctx } = await getServiceContextForPage();
     const service = await getNotificationService();
-    return service.listNotifications(ctx, session);
+    return service.listNotificationBell(ctx, session);
   } catch {
-    return [];
+    return EMPTY_BELL;
   }
 }

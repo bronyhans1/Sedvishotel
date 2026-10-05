@@ -1,3 +1,6 @@
+import type { FolioListFilters } from "@/lib/folio/list-order";
+import type { PaginatedResult } from "@/repositories/types";
+import type { FolioListItem } from "@/types/folio";
 import type {
   DbFolioDebitCredit,
   DbFolioEntry,
@@ -47,6 +50,15 @@ export interface IGuestFolioRepository {
     toDate?: string;
     search?: string;
   }): Promise<DbGuestFolioWithRelations[]>;
+  /**
+   * One operational page for the guest folio screen.
+   * Does not change list().
+   */
+  listPage(input: {
+    page: number;
+    pageSize: number;
+    filters: FolioListFilters;
+  }): Promise<PaginatedResult<FolioListItem>>;
   postEntry(input: CreateFolioEntryRecord): Promise<DbFolioEntry>;
   hasEntryType(folioId: string, entryType: DbFolioEntryType): Promise<boolean>;
   closeFolio(id: string): Promise<DbGuestFolio>;

@@ -11,17 +11,20 @@ export const metadata: Metadata = {
   description: `Guest management for ${siteConfig.name}`,
 };
 
-async function GuestsPageLoader() {
-  const { guests, stats, access } = await loadGuestsPageData();
-  return (
-    <GuestsPageContent guests={guests} stats={stats} access={access} />
-  );
+type Props = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+async function GuestsPageLoader({ searchParams }: Props) {
+  const params = await searchParams;
+  const data = await loadGuestsPageData(params);
+  return <GuestsPageContent {...data} />;
 }
 
-export default function GuestsPage() {
+export default function GuestsPage({ searchParams }: Props) {
   return (
     <Suspense fallback={<GuestsPageSkeleton />}>
-      <GuestsPageLoader />
+      <GuestsPageLoader searchParams={searchParams} />
     </Suspense>
   );
 }

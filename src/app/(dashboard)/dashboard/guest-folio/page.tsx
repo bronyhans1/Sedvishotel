@@ -10,15 +10,20 @@ export const metadata: Metadata = {
   description: "Unified guest ledger",
 };
 
-async function FolioListLoader() {
-  const { folios, access } = await loadFolioListPageData();
-  return <FolioListPageContent folios={folios} access={access} />;
+type Props = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+async function FolioListLoader({ searchParams }: Props) {
+  const params = await searchParams;
+  const data = await loadFolioListPageData(params);
+  return <FolioListPageContent {...data} />;
 }
 
-export default function GuestFolioPage() {
+export default function GuestFolioPage({ searchParams }: Props) {
   return (
     <Suspense fallback={<FolioPageSkeleton />}>
-      <FolioListLoader />
+      <FolioListLoader searchParams={searchParams} />
     </Suspense>
   );
 }

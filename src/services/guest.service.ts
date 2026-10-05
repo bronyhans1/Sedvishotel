@@ -1,11 +1,14 @@
 import { getGuestAccess } from "@/lib/auth/guest-access";
 import { sessionHasPermission } from "@/lib/auth/permissions";
+import type { GuestDirectoryStats, GuestListFilters, GuestListStay } from "@/lib/guests/list-order";
 import {
   formValuesToGuestInsert,
   formValuesToGuestUpdate,
   isGuestArchived,
   mapDbGuestToGuest,
 } from "@/lib/guests/mapper";
+import { OPERATIONAL_LIST_PAGE_SIZE } from "@/lib/pagination/constants";
+import { getTotalPages, normalizePage } from "@/lib/pagination/pagination";
 import type { IActivityLogRepository } from "@/repositories/activity-log.repository";
 import type { IGuestRepository } from "@/repositories/guest.repository";
 import type { IPaymentRepository } from "@/repositories/payment.repository";
@@ -16,8 +19,22 @@ import type { ServiceContext } from "@/services/types";
 import { ActivityActionCodes } from "@/types/database/enums";
 import type { Guest, GuestFormValues } from "@/types/guest";
 
+export type GuestListPage = {
+  guests: Guest[];
+  stays: GuestListStay[];
+  total: number;
+  page: number;
+  pageSize: number;
+  stats: GuestDirectoryStats;
+};
+
 export interface IGuestService {
   listGuests(ctx: ServiceContext, session: AuthSession): Promise<Guest[]>;
+  listGuestPage(
+    ctx: ServiceContext,
+    session: AuthSession,
+    input: { page: number; businessDate: string; filters: GuestListFilters }
+  ): Promise<GuestListPage>;
   getGuestById(
     ctx: ServiceContext,
     session: AuthSession,
@@ -107,6 +124,31 @@ export class GuestService implements IGuestService {
     this.require(session, "view");
     const rows = await this.guests.getAll(false);
     return rows.map(mapDbGuestToGuest);
+  }
+
+  async listGuestPage(
+    _ctx: ServiceContext,
+    session: AuthSession,
+    input: { page: number; businessDate: string; filters: GuestListFilters }
+  ): Promise<GuestListPage> {
+    this.require(session, "view");
+    const pageSize = OPERATIONAL_LIST_PAGE_SIZE;
+    const result = await this.guests.listPage({
+      page: input.page,
+      pageSize,
+      businessDate: input.businessDate,
+      filters: input.filters,
+    });
+    const page = normalizePage(input.page, getTotalPages(result.total, pageSize));
+    const visible = page === input.page;
+    return {
+      guests: visible ? result.data.map(mapDbGuestToGuest) : [],
+      stays: visible ? result.stays : [],
+      total: result.total,
+      page,
+      pageSize,
+      stats: result.stats,
+    };
   }
 
   async getGuestById(

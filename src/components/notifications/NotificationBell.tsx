@@ -23,7 +23,8 @@ import { resolveNotificationHref } from "@/lib/notifications/operational-notific
 import type { Notification } from "@/types/notification";
 
 type NotificationBellProps = {
-  notifications: Notification[];
+  preview: Notification[];
+  unreadCount: number;
 };
 
 function formatTime(iso: string) {
@@ -36,11 +37,9 @@ function formatTime(iso: string) {
   });
 }
 
-export function NotificationBell({ notifications }: NotificationBellProps) {
+export function NotificationBell({ preview, unreadCount }: NotificationBellProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const unread = notifications.filter((item) => !item.read);
-  const preview = notifications.slice(0, 8);
 
   const refresh = () => {
     startTransition(() => router.refresh());
@@ -78,9 +77,9 @@ export function NotificationBell({ notifications }: NotificationBellProps) {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
           <Bell className="h-4 w-4" />
-          {unread.length > 0 ? (
+          {unreadCount > 0 ? (
             <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-gold px-1 text-[10px] font-bold text-brand-navy">
-              {unread.length > 99 ? "99+" : unread.length}
+              {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           ) : null}
         </Button>
@@ -88,7 +87,7 @@ export function NotificationBell({ notifications }: NotificationBellProps) {
       <DropdownMenuContent align="end" className="w-96">
         <DropdownMenuLabel className="flex items-center justify-between gap-2">
           <span>Notifications</span>
-          {unread.length > 0 ? (
+          {unreadCount > 0 ? (
             <Button
               type="button"
               variant="ghost"

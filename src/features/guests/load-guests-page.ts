@@ -2,19 +2,25 @@ import { redirect } from "next/navigation";
 
 import { ACCESS_DENIED_PATH } from "@/lib/auth/route-guard";
 
+import {
+  buildGuestListQuery,
+  parseGuestSearchParams,
+} from "@/features/guests/lib/parse-guest-search-params";
 import { getGuestAccess } from "@/lib/auth/guest-access";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
 import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import { getCurrentTimeString } from "@/lib/dates/time";
-import { computeGuestStats } from "@/lib/guests/stats";
 import { getGuestService } from "@/lib/guests/get-guest-service";
+import { parsePageParam } from "@/lib/pagination/pagination";
 import { resolveDepartureClassification } from "@/lib/reservations/departure-classification";
 import { getReservationService } from "@/lib/reservations/get-reservation-service";
 import { loadCheckoutPolicy } from "@/lib/settings/checkout-policy";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import type { Guest, GuestOperationalStay } from "@/types/guest";
+import type { Guest, GuestOperationalStay, GuestStats } from "@/types/guest";
 
-export async function loadGuestsPageData() {
+export async function loadGuestsPageData(
+  params: Record<string, string | string[] | undefined> = {}
+) {
   if (!isSupabaseConfigured()) {
     redirect("/login");
   }
@@ -28,30 +34,30 @@ export async function loadGuestsPageData() {
 
   const guestService = await getGuestService();
   const reservationService = await getReservationService();
+  const filters = parseGuestSearchParams(params);
+  const requestedPage = parsePageParam(params.page);
+  const businessDate = await getCurrentBusinessDate();
 
-  const [guests, todayEvents, businessDate, checkoutPolicy, reservations] =
-    await Promise.all([
-      guestService.listGuests(ctx, session),
-      reservationService.getTodayStayEventCounts(ctx, session),
-      getCurrentBusinessDate(),
-      loadCheckoutPolicy(),
-      reservationService.listReservations(ctx, session),
-    ]);
+  const [guestPage, todayEvents, checkoutPolicy] = await Promise.all([
+    guestService.listGuestPage(ctx, session, {
+      page: requestedPage,
+      businessDate,
+      filters,
+    }),
+    reservationService.getTodayStayEventCounts(ctx, session),
+    loadCheckoutPolicy(),
+  ]);
 
-  const currentTime = getCurrentTimeString();
-  const stayByGuestId = new Map<
-    string,
-    (typeof reservations)[number]
-  >();
-  for (const reservation of reservations) {
-    if (reservation.status === "checked_in" && reservation.guestId) {
-      stayByGuestId.set(reservation.guestId, reservation);
-    }
+  if (guestPage.page !== requestedPage) {
+    const query = buildGuestListQuery(filters, guestPage.page);
+    redirect(query ? `/dashboard/guests?${query}` : "/dashboard/guests");
   }
 
-  const enriched: Guest[] = guests.map((guest) => {
+  const currentTime = getCurrentTimeString();
+  const stayByGuestId = new Map(guestPage.stays.map((stay) => [stay.guestId, stay]));
+  const guests: Guest[] = guestPage.guests.map((guest) => {
     const stay = stayByGuestId.get(guest.id);
-    if (!stay) {
+    if (!stay || stay.status !== "checked_in") {
       return { ...guest, operationalStay: null };
     }
     const resolved = resolveDepartureClassification({
@@ -79,11 +85,19 @@ export async function loadGuestsPageData() {
     return { ...guest, operationalStay };
   });
 
-  const stats = computeGuestStats({
-    guests: enriched,
+  const stats: GuestStats = {
+    ...guestPage.stats,
     checkInsToday: todayEvents.checkInsToday,
     checkOutsToday: todayEvents.checkOutsToday,
-  });
+  };
 
-  return { guests: enriched, stats, access };
+  return {
+    guests,
+    total: guestPage.total,
+    page: guestPage.page,
+    pageSize: guestPage.pageSize,
+    filters,
+    stats,
+    access,
+  };
 }

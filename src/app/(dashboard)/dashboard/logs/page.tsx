@@ -11,17 +11,20 @@ export const metadata: Metadata = {
   description: `Activity logs for ${siteConfig.name}`,
 };
 
-async function LogsPageLoader() {
-  const data = await loadLogsPageData();
+type Props = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+async function LogsPageLoader({ searchParams }: Props) {
+  const params = await searchParams;
+  const data = await loadLogsPageData(params);
   return <LogsPageContent {...data} />;
 }
 
-export default function LogsPage() {
+export default function LogsPage({ searchParams }: Props) {
   return (
-    <Suspense
-      fallback={<LogsPageSkeleton />}
-    >
-      <LogsPageLoader />
+    <Suspense fallback={<LogsPageSkeleton />}>
+      <LogsPageLoader searchParams={searchParams} />
     </Suspense>
   );
 }

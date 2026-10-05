@@ -15,6 +15,20 @@ export interface ActivityLogFilters {
   status?: DbActivityLogStatus;
   dateFrom?: string;
   dateTo?: string;
+  /**
+   * Free-text match on user, action, and module.
+   * Applied in the database before pagination.
+   */
+  search?: string;
+}
+
+/** UTC calendar-day KPI counts. Independent of list pagination and search. */
+export interface ActivityLogUtcDayCounts {
+  actionsToday: number;
+  reservationsCreated: number;
+  paymentsRecorded: number;
+  checkIns: number;
+  checkOuts: number;
 }
 
 export interface CreateActivityLogInput {
@@ -39,6 +53,11 @@ export interface IActivityLogRepository {
     filters?: ActivityLogFilters,
     pagination?: PaginationParams
   ): Promise<PaginatedResult<DbActivityLog>>;
+  /**
+   * Counts for the UTC calendar day of `day` (YYYY-MM-DD).
+   * Same action-code rules as the historical in-memory log stats.
+   */
+  countUtcCalendarDay(day: string): Promise<ActivityLogUtcDayCounts>;
   findByEntityId(entityId: string, module?: string): Promise<DbActivityLog[]>;
   findReceiptPrintEvents(paymentId: string): Promise<DbActivityLog[]>;
   findRecent(limit?: number): Promise<DbActivityLog[]>;

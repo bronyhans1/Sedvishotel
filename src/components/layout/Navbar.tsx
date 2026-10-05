@@ -32,16 +32,23 @@ import {
 import { GlobalGroupSearch } from "@/components/search/GlobalGroupSearch";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Sidebar } from "@/components/layout/Sidebar";
-import type { Notification } from "@/types/notification";
+import type { NotificationBellData } from "@/types/notification";
 
 type NavbarProps = {
   user: CurrentUser | null;
   onMenuClick?: () => void;
-  notifications?: Notification[];
+  notifications?: NotificationBellData;
   navBadges?: Record<string, string>;
 };
 
-export function Navbar({ user, onMenuClick, notifications = [], navBadges = {} }: NavbarProps) {
+const EMPTY_BELL: NotificationBellData = { preview: [], unreadCount: 0 };
+
+export function Navbar({
+  user,
+  onMenuClick,
+  notifications = EMPTY_BELL,
+  navBadges = {},
+}: NavbarProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [signOutOpen, setSignOutOpen] = useState(false);
@@ -107,7 +114,10 @@ export function Navbar({ user, onMenuClick, notifications = [], navBadges = {} }
           <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
         </Button>
 
-        <NotificationBell notifications={notifications} />
+        <NotificationBell
+          preview={notifications.preview}
+          unreadCount={notifications.unreadCount}
+        />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

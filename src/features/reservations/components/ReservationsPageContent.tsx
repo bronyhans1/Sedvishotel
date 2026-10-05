@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { AvailabilityChecker } from "@/components/reservations/AvailabilityChecker";
 import { CreateReservationModal } from "@/components/reservations/CreateReservationModal";
@@ -13,8 +13,10 @@ import {
 import { ReservationEmptyState } from "@/components/reservations/ReservationEmptyState";
 import { ReservationTable } from "@/components/reservations/ReservationTable";
 import { PageContainer } from "@/components/shared/PageContainer";
+import { Pagination } from "@/components/shared/Pagination";
 import { ReservationsStats } from "@/features/reservations/components/ReservationsStats";
-import { filterReservations } from "@/features/reservations/lib/filter-reservations";
+import { buildReservationListQuery } from "@/features/reservations/lib/parse-reservation-search-params";
+import { buildPageHref } from "@/lib/pagination/pagination";
 import type {
   ReservationRoomTypeOption,
 } from "@/features/reservations/load-reservations-page";
@@ -34,6 +36,10 @@ const defaultFilters: ReservationFilterState = {
 
 type ReservationsPageContentProps = {
   reservations: Reservation[];
+  total: number;
+  page: number;
+  pageSize: number;
+  filters: ReservationFilterState;
   stats: ReservationStats;
   access: ReservationAccess;
   roomTypeOptions: ReservationRoomTypeOption[];
@@ -44,11 +50,14 @@ type ReservationsPageContentProps = {
   serviceChargeRate: number;
   requireRateOverrideApproval: boolean;
   canOverrideVat: boolean;
-  initialFilters?: Partial<ReservationFilterState>;
 };
 
 export function ReservationsPageContent({
   reservations,
+  total,
+  page,
+  pageSize,
+  filters,
   stats,
   access,
   roomTypeOptions,
@@ -59,22 +68,50 @@ export function ReservationsPageContent({
   serviceChargeRate,
   requireRateOverrideApproval,
   canOverrideVat,
-  initialFilters,
 }: ReservationsPageContentProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
-  const [filters, setFilters] = useState<ReservationFilterState>({
-    ...defaultFilters,
-    ...initialFilters,
-  });
+  const [draftSearch, setDraftSearch] = useState(filters.search);
   const [createOpen, setCreateOpen] = useState(false);
   const [editRes, setEditRes] = useState<Reservation | null>(null);
 
-  const filtered = useMemo(
-    () => filterReservations(reservations, filters),
-    [reservations, filters]
-  );
+  useEffect(() => {
+    setDraftSearch(filters.search);
+  }, [filters.search]);
+
+  useEffect(() => {
+    if (draftSearch.trim() === filters.search.trim()) return;
+    const handle = window.setTimeout(() => {
+      const query = buildReservationListQuery({ ...filters, search: draftSearch }, 1);
+      startTransition(() => {
+        router.push(query ? `/dashboard/reservations?${query}` : "/dashboard/reservations");
+      });
+    }, 400);
+    return () => window.clearTimeout(handle);
+  }, [draftSearch, filters, router]);
+
+  function pushFilters(next: ReservationFilterState, nextPage = 1) {
+    const query = buildReservationListQuery(next, nextPage);
+    startTransition(() => {
+      router.push(query ? `/dashboard/reservations?${query}` : "/dashboard/reservations");
+    });
+  }
+
+  function refresh() {
+    startTransition(() => {
+      router.refresh();
+    });
+  }
+
+  function goToPage(nextPage: number) {
+    startTransition(() => {
+      router.push(
+        buildPageHref("/dashboard/reservations", searchParams.toString(), nextPage)
+      );
+    });
+  }
 
   const hasActiveFilters =
     filters.search.trim() !== "" ||
@@ -84,14 +121,8 @@ export function ReservationsPageContent({
     filters.dateFrom !== "" ||
     filters.dateTo !== "";
 
-  function refresh() {
-    startTransition(() => {
-      router.refresh();
-    });
-  }
-
   const emptyVariant =
-    reservations.length === 0
+    stats.total === 0
       ? "no-reservations"
       : hasActiveFilters
         ? "no-results"
@@ -103,7 +134,7 @@ export function ReservationsPageContent({
       description={`Manage guest bookings and occupancy at ${siteConfig.name}.`}
       actions={
         <p className="text-xs text-muted-foreground">
-          {filtered.length} of {reservations.length} shown
+          {total} of {stats.total} shown
         </p>
       }
     >
@@ -112,28 +143,50 @@ export function ReservationsPageContent({
       <AvailabilityChecker />
 
       <ReservationFilters
-        filters={filters}
-        onFiltersChange={setFilters}
+        filters={{ ...filters, search: draftSearch }}
+        onFiltersChange={(next) => {
+          if (next.search !== draftSearch) {
+            setDraftSearch(next.search);
+            return;
+          }
+          pushFilters(next, 1);
+        }}
         onCreate={access.canCreate ? () => setCreateOpen(true) : undefined}
         showCreateButton={access.canCreate}
         roomTypeOptions={roomTypeOptions}
       />
 
-      {filtered.length === 0 ? (
+      {total === 0 ? (
         <ReservationEmptyState
           variant={emptyVariant}
           onClear={
-            hasActiveFilters ? () => setFilters(defaultFilters) : undefined
+            hasActiveFilters
+              ? () => {
+                  setDraftSearch("");
+                  pushFilters(defaultFilters, 1);
+                }
+              : undefined
           }
         />
       ) : (
-        <ReservationTable
-          reservations={filtered}
-          canEdit={access.canEdit}
-          onEdit={access.canEdit ? setEditRes : undefined}
-          businessDate={businessDate}
-          policyCheckOutTime={checkoutPolicy.checkOutTime}
-        />
+        <div className="space-y-3">
+          <ReservationTable
+            reservations={reservations}
+            canEdit={access.canEdit}
+            onEdit={access.canEdit ? setEditRes : undefined}
+            businessDate={businessDate}
+            policyCheckOutTime={checkoutPolicy.checkOutTime}
+          />
+          {total > pageSize ? (
+            <Pagination
+              page={page}
+              total={total}
+              pageSize={pageSize}
+              itemLabel="reservations"
+              onPageChange={goToPage}
+            />
+          ) : null}
+        </div>
       )}
 
       {access.canCreate && (

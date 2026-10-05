@@ -1,6 +1,10 @@
 import { getPaymentAccess } from "@/lib/auth/payment-access";
 import { getCheckOutAccess } from "@/lib/auth/check-out-access";
 import { mapDbPaymentToPayment } from "@/lib/payments/mapper";
+import { buildOperationalPaymentSummary } from "@/lib/payments/operational-summary";
+import type { OperationalPartialPayment } from "@/lib/payments/operational-summary";
+import { OPERATIONAL_LIST_PAGE_SIZE } from "@/lib/pagination/constants";
+import { getTotalPages, normalizePage } from "@/lib/pagination/pagination";
 import {
   aggregatePaymentMethod,
   countPositiveTransactions,
@@ -40,7 +44,20 @@ import { ServiceError } from "@/services/types";
 import type { ServiceContext } from "@/services/types";
 import { ActivityActionCodes } from "@/types/database/enums";
 import type { DbPaymentTransaction } from "@/types/database";
-import type { Payment, PaymentFormValues, RefundFormValues } from "@/types/payment";
+import type { Payment, PaymentFormValues, PaymentStats, RefundFormValues } from "@/types/payment";
+
+export type PaymentListPage = {
+  payments: Payment[];
+  total: number;
+  page: number;
+  pageSize: number;
+  search: string;
+};
+
+export type PaymentOperationalSummary = {
+  stats: PaymentStats;
+  partialPayments: OperationalPartialPayment[];
+};
 
 export interface UpdatePaymentInput {
   method?: PaymentFormValues["method"];
@@ -50,6 +67,15 @@ export interface UpdatePaymentInput {
 
 export interface IPaymentService {
   getAll(ctx: ServiceContext, session: AuthSession): Promise<Payment[]>;
+  listPaymentPage(
+    ctx: ServiceContext,
+    session: AuthSession,
+    input: { page: number; search?: string }
+  ): Promise<PaymentListPage>;
+  getOperationalPaymentSummary(
+    ctx: ServiceContext,
+    session: AuthSession
+  ): Promise<PaymentOperationalSummary>;
   getById(
     ctx: ServiceContext,
     session: AuthSession,
@@ -215,6 +241,51 @@ export class PaymentService implements IPaymentService {
     return rows.map((row) =>
       mapDbPaymentToPayment(row, txByPayment.get(row.id) ?? [])
     );
+  }
+
+  async listPaymentPage(
+    ctx: ServiceContext,
+    session: AuthSession,
+    input: { page: number; search?: string }
+  ): Promise<PaymentListPage> {
+    this.require(session, "view");
+    const pageSize = OPERATIONAL_LIST_PAGE_SIZE;
+    const search = input.search?.trim() ?? "";
+    const result = await this.payments.listPage({
+      page: input.page,
+      pageSize,
+      search,
+    });
+    const visiblePage = normalizePage(input.page, getTotalPages(result.total, pageSize));
+    const txByPayment =
+      visiblePage === input.page
+        ? await this.payments.getTransactionsForIds(result.data.map((row) => row.id))
+        : new Map<string, DbPaymentTransaction[]>();
+
+    return {
+      payments:
+        visiblePage === input.page
+          ? result.data.map((row) =>
+              mapDbPaymentToPayment(row, txByPayment.get(row.id) ?? [])
+            )
+          : [],
+      total: result.total,
+      page: visiblePage,
+      pageSize,
+      search,
+    };
+  }
+
+  async getOperationalPaymentSummary(
+    ctx: ServiceContext,
+    session: AuthSession
+  ): Promise<PaymentOperationalSummary> {
+    this.require(session, "view");
+    const [rows, transactions] = await Promise.all([
+      this.payments.listOperationalRows(),
+      this.payments.listTransactionAmounts(),
+    ]);
+    return buildOperationalPaymentSummary(rows, transactions);
   }
 
   async getById(

@@ -11,17 +11,22 @@ export const metadata: Metadata = {
   description: `Notifications for ${siteConfig.name}`,
 };
 
-async function NotificationsPageLoader() {
-  const data = await loadNotificationsPageData();
+type Props = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+async function NotificationsPageLoader({ searchParams }: Props) {
+  const params = await searchParams;
+  const data = await loadNotificationsPageData(params);
   return <NotificationsPageContent {...data} />;
 }
 
-export default function NotificationsPage() {
+export default function NotificationsPage({ searchParams }: Props) {
   return (
     <Suspense
       fallback={<PageLoader statCount={0} showStats={false} tableColumns={1} tableRows={6} showFilters={false} />}
     >
-      <NotificationsPageLoader />
+      <NotificationsPageLoader searchParams={searchParams} />
     </Suspense>
   );
 }

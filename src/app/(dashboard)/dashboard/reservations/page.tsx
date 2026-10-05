@@ -3,7 +3,6 @@ import { Suspense } from "react";
 
 import { ReservationsPageContent } from "@/features/reservations/components/ReservationsPageContent";
 import { ReservationsPageSkeleton } from "@/features/reservations/components/ReservationsPageSkeleton";
-import { parseReservationSearchParams } from "@/features/reservations/lib/parse-reservation-search-params";
 import { loadReservationsPageData } from "@/features/reservations/load-reservations-page";
 import { siteConfig } from "@/config/site";
 
@@ -18,11 +17,8 @@ type Props = {
 
 async function ReservationsPageLoader({ searchParams }: Props) {
   const params = await searchParams;
-  const data = await loadReservationsPageData();
-  const initialFilters = parseReservationSearchParams(params);
-  return (
-    <ReservationsPageContent {...data} initialFilters={initialFilters} />
-  );
+  const data = await loadReservationsPageData(params);
+  return <ReservationsPageContent {...data} />;
 }
 
 export default function ReservationsPage({ searchParams }: Props) {

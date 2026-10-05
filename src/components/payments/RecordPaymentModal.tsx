@@ -35,6 +35,10 @@ import {
   getReservationChargeBase,
 } from "@/lib/payments/payment-settlement";
 import {
+  groupRecordPaymentGuests,
+  groupRecordPaymentReservations,
+} from "@/lib/payments/record-payment-selection";
+import {
   buildRoomPaymentReceiptDraft,
   printRoomPaymentReceiptDraft,
 } from "@/lib/payments/room-payment-receipt-draft";
@@ -61,6 +65,7 @@ type Props = {
   defaultVatApplied: boolean;
   canOverrideVat: boolean;
   receiptBranding: ReceiptBranding;
+  businessDate: string;
 };
 
 function buildInitial(defaultVatApplied: boolean): PaymentFormValues {
@@ -176,6 +181,7 @@ export function RecordPaymentModal({
   defaultVatApplied,
   canOverrideVat,
   receiptBranding,
+  businessDate,
 }: Props) {
   const toast = useToast();
   const refresh = useLiveRefresh();
@@ -228,10 +234,54 @@ export function RecordPaymentModal({
 
   const vatApplied = values.vatApplied ?? defaultVatApplied;
 
+  const selectionOutstanding = useMemo(() => {
+    return (reservation: Reservation) => {
+      const folio = folioSettlements[reservation.id];
+      if (folio) {
+        return roundCurrency(Math.max(0, folio.outstandingBalance));
+      }
+      const partial =
+        partialPayments.find((payment) => payment.reservationId === reservation.id) ??
+        null;
+      return buildSettlementFromReservation(
+        reservation,
+        defaultTaxRate,
+        defaultVatApplied,
+        0,
+        {
+          lockedTotalDue: partial?.totalDue,
+          amountPaid: partial?.amountPaid ?? reservation.amountPaid,
+          suppressPaymentProjection: true,
+        }
+      ).outstandingBalance;
+    };
+  }, [folioSettlements, partialPayments, defaultTaxRate, defaultVatApplied]);
+
   const filteredReservations = useMemo(() => {
     if (!guestFilterId) return reservations;
     return reservations.filter((r) => r.guestId === guestFilterId);
   }, [reservations, guestFilterId]);
+
+  const guestGroups = useMemo(
+    () =>
+      groupRecordPaymentGuests(
+        guests,
+        reservations,
+        selectionOutstanding,
+        businessDate
+      ),
+    [guests, reservations, selectionOutstanding, businessDate]
+  );
+
+  const reservationGroups = useMemo(
+    () =>
+      groupRecordPaymentReservations(
+        filteredReservations,
+        selectionOutstanding,
+        businessDate
+      ),
+    [filteredReservations, selectionOutstanding, businessDate]
+  );
 
   const settlement = useMemo(() => {
     if (!selectedReservation) return null;
@@ -526,10 +576,14 @@ export function RecordPaymentModal({
               className={selectClass}
             >
               <option value="">All guests</option>
-              {guests.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.fullName}
-                </option>
+              {guestGroups.map((group) => (
+                <optgroup key={group.id} label={group.label}>
+                  {group.items.map((guest) => (
+                    <option key={guest.id} value={guest.id}>
+                      {guest.fullName}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
@@ -543,10 +597,15 @@ export function RecordPaymentModal({
               className={selectClass}
             >
               <option value="">Select reservation</option>
-              {filteredReservations.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.reservationNumber} · {r.guestName} · Room {r.roomNumber}
-                </option>
+              {reservationGroups.map((group) => (
+                <optgroup key={group.id} label={group.label}>
+                  {group.items.map((reservation) => (
+                    <option key={reservation.id} value={reservation.id}>
+                      {reservation.reservationNumber} · {reservation.guestName} · Room{" "}
+                      {reservation.roomNumber}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>

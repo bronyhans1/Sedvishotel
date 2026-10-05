@@ -1,4 +1,7 @@
 import { calculateFolioBalance } from "@/lib/folio/balance";
+import type { FolioListFilters } from "@/lib/folio/list-order";
+import { OPERATIONAL_LIST_PAGE_SIZE } from "@/lib/pagination/constants";
+import { getTotalPages, normalizePage } from "@/lib/pagination/pagination";
 import {
   deriveAuthoritativeSettlement,
   isFolioAuthoritative,
@@ -38,6 +41,13 @@ import type {
   PostFolioEntryInput,
 } from "@/types/folio";
 import type { EarlyCheckoutProgress } from "@/lib/reservations/early-checkout-progress";
+
+export type FolioListPage = {
+  folios: FolioListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
 
 const CHECKED_IN_ONLY = "Only checked-in reservations may receive folio entries.";
 
@@ -114,6 +124,11 @@ export interface IGuestFolioService {
       toDate?: string;
     }
   ): Promise<FolioListItem[]>;
+  listFolioPage(
+    ctx: ServiceContext,
+    session: AuthSession,
+    input: { page: number; filters: FolioListFilters }
+  ): Promise<FolioListPage>;
   listEntries(
     ctx: ServiceContext,
     session: AuthSession,
@@ -841,6 +856,27 @@ export class GuestFolioService implements IGuestFolioService {
     this.require(session, "view");
     const rows = await this.folios.list(options);
     return rows.map(mapDbFolioToListItem);
+  }
+
+  async listFolioPage(
+    _ctx: ServiceContext,
+    session: AuthSession,
+    input: { page: number; filters: FolioListFilters }
+  ): Promise<FolioListPage> {
+    this.require(session, "view");
+    const pageSize = OPERATIONAL_LIST_PAGE_SIZE;
+    const result = await this.folios.listPage({
+      page: input.page,
+      pageSize,
+      filters: input.filters,
+    });
+    const page = normalizePage(input.page, getTotalPages(result.total, pageSize));
+    return {
+      folios: page === input.page ? result.data : [],
+      total: result.total,
+      page,
+      pageSize,
+    };
   }
 
   async listEntries(

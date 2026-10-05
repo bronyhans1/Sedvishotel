@@ -1,5 +1,17 @@
+import type {
+  GuestDirectoryStats,
+  GuestListFilters,
+  GuestListStay,
+} from "@/lib/guests/list-order";
 import type { BaseRepository } from "@/repositories/base.repository";
+import type { PaginatedResult } from "@/repositories/types";
 import type { DbGuest } from "@/types/database";
+
+export type GuestListPageResult = PaginatedResult<DbGuest> & {
+  stays: GuestListStay[];
+  /** Full non-archived directory. Ignores search, status, and page. */
+  stats: GuestDirectoryStats;
+};
 
 /** Columns needed for reports guest KPIs. */
 export type AnalyticsGuestRow = {
@@ -11,6 +23,16 @@ export type AnalyticsGuestRow = {
 
 export interface IGuestRepository {
   getAll(includeArchived?: boolean): Promise<DbGuest[]>;
+  /**
+   * One operational page for the guests screen.
+   * Does not change getAll().
+   */
+  listPage(input: {
+    page: number;
+    pageSize: number;
+    businessDate: string;
+    filters: GuestListFilters;
+  }): Promise<GuestListPageResult>;
   /** Column-scoped guest rows for analytics (excludes archived in-repo). */
   listForAnalytics(): Promise<AnalyticsGuestRow[]>;
   getById(id: string): Promise<DbGuest | null>;

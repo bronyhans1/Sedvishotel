@@ -5,12 +5,12 @@ import { ACCESS_DENIED_PATH } from "@/lib/auth/route-guard";
 import { getPaymentAccess } from "@/lib/auth/payment-access";
 import { getServiceContextForPage } from "@/lib/auth/service-context";
 import type { AuthoritativeSettlement } from "@/lib/folio/authoritative-settlement";
+import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import { getGuestFolioService } from "@/lib/folio/get-guest-folio-service";
 import { getGuestService } from "@/lib/guests/get-guest-service";
-import { computePaymentStats } from "@/lib/payments/stats";
-import { roundCurrency } from "@/lib/payments/currency";
 import { loadHotelDocumentSettings } from "@/lib/documents/load-document-settings";
 import { getPaymentService } from "@/lib/payments/get-payment-service";
+import { parsePageParam } from "@/lib/pagination/pagination";
 import { getReservationService } from "@/lib/reservations/get-reservation-service";
 import { getDefaultTaxRate, isGlobalVatEnabled } from "@/lib/settings/get-tax-rate";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -34,7 +34,9 @@ export type PaymentRecordOption = {
   defaultVatApplied: boolean;
 };
 
-export async function loadPaymentsPageData() {
+export async function loadPaymentsPageData(
+  params: Record<string, string | string[] | undefined> = {}
+) {
   if (!isSupabaseConfigured()) {
     redirect("/login");
   }
@@ -50,30 +52,48 @@ export async function loadPaymentsPageData() {
   const guestService = await getGuestService();
   const reservationService = await getReservationService();
 
-  const [payments, guests, reservations, folioService, documentSettings] =
-    await Promise.all([
-      paymentService.getAll(ctx, session),
+  const requestedPage = parsePageParam(params.page);
+  const search = typeof params.search === "string" ? params.search : "";
+
+  const [
+    paymentPage,
+    summary,
+    guests,
+    reservations,
+    folioService,
+    documentSettings,
+    businessDate,
+  ] = await Promise.all([
+      paymentService.listPaymentPage(ctx, session, {
+        page: requestedPage,
+        search,
+      }),
+      paymentService.getOperationalPaymentSummary(ctx, session),
       guestService.listGuests(ctx, session),
       reservationService.listReservations(ctx, session),
       getGuestFolioService(),
       loadHotelDocumentSettings(),
+      getCurrentBusinessDate(),
     ]);
+
+  if (paymentPage.page !== requestedPage) {
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (key === "page" || key === "search") continue;
+      if (typeof value === "string" && value) qs.set(key, value);
+    }
+    if (paymentPage.search) qs.set("search", paymentPage.search);
+    if (paymentPage.page > 1) qs.set("page", String(paymentPage.page));
+    const query = qs.toString();
+    redirect(query ? `/dashboard/payments?${query}` : "/dashboard/payments");
+  }
 
   const recordableReservations = reservations.filter(
     (r) => r.status !== "cancelled"
   );
 
-  const stats = computePaymentStats(payments);
+  const { stats, partialPayments } = summary;
   const defaultTaxRate = await getDefaultTaxRate();
-  const partialPayments: PartialPaymentContext[] = payments
-    .filter((p) => p.status === "partial" && p.balance > 0)
-    .map((p) => ({
-      reservationId: p.reservationId,
-      reference: p.reference,
-      totalDue: roundCurrency(p.totalDue),
-      amountPaid: roundCurrency(p.netPaid),
-      outstandingBalance: roundCurrency(p.balance),
-    }));
   const folioSettlements: Record<string, AuthoritativeSettlement> = {};
   await Promise.all(
     recordableReservations
@@ -98,10 +118,15 @@ export async function loadPaymentsPageData() {
   };
 
   return {
-    payments,
+    payments: paymentPage.payments,
+    total: paymentPage.total,
+    page: paymentPage.page,
+    pageSize: paymentPage.pageSize,
+    search: paymentPage.search,
     stats,
     access,
     recordOptions,
     receiptBranding: documentSettings.receiptBranding,
+    businessDate,
   };
 }

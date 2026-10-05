@@ -18,6 +18,9 @@ import { computeTransactionTotals, resolvePaymentStatusFromTotals } from "@/lib/
 import { sessionHasPermission } from "@/lib/auth/permissions";
 import { permissionCode } from "@/lib/database/rbac";
 import { mapDbReservationToReservation } from "@/lib/reservations/mapper";
+import type { ReservationListFilters } from "@/lib/reservations/list-order";
+import { OPERATIONAL_LIST_PAGE_SIZE } from "@/lib/pagination/constants";
+import { getTotalPages, normalizePage } from "@/lib/pagination/pagination";
 import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
 import {
   buildReservationPricingSnapshot,
@@ -83,7 +86,14 @@ import type {
 import type { ExtendStayInput, ExtendStayPreview } from "@/types/extend-stay";
 import type { RoomMoveInput, RoomMovePreview } from "@/types/room-move";
 import type { PaymentFormValues, TransactionPaymentMethod } from "@/types/payment";
-import type { Reservation, ReservationFormValues } from "@/types/reservation";
+import type { Reservation, ReservationFormValues, ReservationStats } from "@/types/reservation";
+
+export type ReservationListPage = {
+  reservations: Reservation[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
 import type { ActiveStay, StayStats } from "@/types/stay";
 import { notifyHousekeepingAlert } from "@/lib/notifications/operational-notifications";
 
@@ -191,6 +201,16 @@ export type CheckOutPageStats = {
 
 export interface IReservationService {
   listReservations(ctx: ServiceContext, session: AuthSession): Promise<Reservation[]>;
+  listReservationPage(
+    ctx: ServiceContext,
+    session: AuthSession,
+    input: { page: number; businessDate: string; filters: ReservationListFilters }
+  ): Promise<ReservationListPage>;
+  getReservationListStats(ctx: ServiceContext, session: AuthSession): Promise<ReservationStats>;
+  listReservationRoomTypeOptions(
+    ctx: ServiceContext,
+    session: AuthSession
+  ): Promise<{ id: string; name: string }[]>;
   getReservationById(
     ctx: ServiceContext,
     session: AuthSession,
@@ -1132,6 +1152,47 @@ export class ReservationService implements IReservationService {
     this.require(session, "view");
     const rows = await this.reservations.getAll();
     return rows.map(mapDbReservationToReservation);
+  }
+
+  async listReservationPage(
+    _ctx: ServiceContext,
+    session: AuthSession,
+    input: { page: number; businessDate: string; filters: ReservationListFilters }
+  ): Promise<ReservationListPage> {
+    this.require(session, "view");
+    const pageSize = OPERATIONAL_LIST_PAGE_SIZE;
+    const result = await this.reservations.listPage({
+      page: input.page,
+      pageSize,
+      businessDate: input.businessDate,
+      filters: input.filters,
+    });
+    const page = normalizePage(input.page, getTotalPages(result.total, pageSize));
+    return {
+      reservations:
+        page === input.page
+          ? result.data.map(mapDbReservationToReservation)
+          : [],
+      total: result.total,
+      page,
+      pageSize,
+    };
+  }
+
+  async getReservationListStats(
+    _ctx: ServiceContext,
+    session: AuthSession
+  ): Promise<ReservationStats> {
+    this.require(session, "view");
+    return this.reservations.countListStats();
+  }
+
+  async listReservationRoomTypeOptions(
+    _ctx: ServiceContext,
+    session: AuthSession
+  ): Promise<{ id: string; name: string }[]> {
+    this.require(session, "view");
+    return this.reservations.listVisibleRoomTypeOptions();
   }
 
   async getReservationById(

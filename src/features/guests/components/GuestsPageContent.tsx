@@ -1,47 +1,78 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Search } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { EditGuestModal } from "@/components/guests/EditGuestModal";
 import { GuestEmptyState } from "@/components/guests/GuestEmptyState";
 import { GuestTable } from "@/components/guests/GuestTable";
 import { PageContainer } from "@/components/shared/PageContainer";
+import { Pagination } from "@/components/shared/Pagination";
 import { Input } from "@/components/ui/input";
 import { GuestsStats } from "@/features/guests/components/GuestsStats";
-import { filterGuests } from "@/features/guests/lib/filter-guests";
+import { buildGuestListQuery } from "@/features/guests/lib/parse-guest-search-params";
 import type { GuestAccess } from "@/lib/auth/guest-access.types";
+import type { GuestListFilters } from "@/lib/guests/list-order";
+import { buildPageHref } from "@/lib/pagination/pagination";
 import { siteConfig } from "@/config/site";
 import { GUEST_STATUS_OPTIONS, type Guest, type GuestStats, type GuestStatus } from "@/types/guest";
 
 const selectClass =
   "h-9 w-full min-w-[140px] rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:w-auto";
 
+const defaultFilters: GuestListFilters = {
+  search: "",
+  status: "all",
+};
+
 type GuestsPageContentProps = {
   guests: Guest[];
+  total: number;
+  page: number;
+  pageSize: number;
+  filters: GuestListFilters;
   stats: GuestStats;
   access: GuestAccess;
 };
 
 export function GuestsPageContent({
   guests,
+  total,
+  page,
+  pageSize,
+  filters,
   stats,
   access,
 }: GuestsPageContentProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<GuestStatus | "all">("all");
+  const [search, setSearch] = useState(filters.search);
   const [editGuest, setEditGuest] = useState<Guest | null>(null);
 
-  const filtered = useMemo(
-    () => filterGuests(guests, search, status),
-    [guests, search, status]
-  );
+  useEffect(() => {
+    setSearch(filters.search);
+  }, [filters.search]);
 
-  const hasActiveFilters = search.trim() !== "" || status !== "all";
+  useEffect(() => {
+    if (search.trim() === filters.search.trim()) return;
+    const handle = window.setTimeout(() => {
+      const query = buildGuestListQuery({ ...filters, search }, 1);
+      startTransition(() => {
+        router.push(query ? `/dashboard/guests?${query}` : "/dashboard/guests");
+      });
+    }, 400);
+    return () => window.clearTimeout(handle);
+  }, [search, filters, router]);
+
+  function pushFilters(next: GuestListFilters, nextPage = 1) {
+    const query = buildGuestListQuery(next, nextPage);
+    startTransition(() => {
+      router.push(query ? `/dashboard/guests?${query}` : "/dashboard/guests");
+    });
+  }
 
   function refresh() {
     startTransition(() => {
@@ -49,17 +80,15 @@ export function GuestsPageContent({
     });
   }
 
-  function clearFilters() {
-    setSearch("");
-    setStatus("all");
+  function goToPage(nextPage: number) {
+    startTransition(() => {
+      router.push(buildPageHref("/dashboard/guests", searchParams.toString(), nextPage));
+    });
   }
 
+  const hasActiveFilters = filters.search.trim() !== "" || filters.status !== "all";
   const emptyVariant =
-    guests.length === 0
-      ? "no-guests"
-      : hasActiveFilters
-        ? "no-results"
-        : "no-guests";
+    stats.totalGuests === 0 ? "no-guests" : hasActiveFilters ? "no-results" : "no-guests";
 
   return (
     <PageContainer
@@ -67,7 +96,7 @@ export function GuestsPageContent({
       description={`Guest directory for ${siteConfig.name}.`}
       actions={
         <p className="text-xs text-muted-foreground">
-          {filtered.length} of {guests.length} guests
+          {total} of {stats.totalGuests} guests
         </p>
       }
     >
@@ -83,8 +112,13 @@ export function GuestsPageContent({
           />
         </div>
         <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as GuestStatus | "all")}
+          value={filters.status}
+          onChange={(e) =>
+            pushFilters(
+              { ...filters, search, status: e.target.value as GuestStatus | "all" },
+              1
+            )
+          }
           className={selectClass}
           aria-label="Filter by status"
         >
@@ -96,17 +130,35 @@ export function GuestsPageContent({
           ))}
         </select>
       </div>
-      {filtered.length === 0 ? (
+      {total === 0 ? (
         <GuestEmptyState
           variant={emptyVariant}
-          onClearFilters={hasActiveFilters ? clearFilters : undefined}
+          onClearFilters={
+            hasActiveFilters
+              ? () => {
+                  setSearch("");
+                  pushFilters(defaultFilters, 1);
+                }
+              : undefined
+          }
         />
       ) : (
-        <GuestTable
-          guests={filtered}
-          canEdit={access.canEdit}
-          onEdit={access.canEdit ? setEditGuest : undefined}
-        />
+        <div className="space-y-3">
+          <GuestTable
+            guests={guests}
+            canEdit={access.canEdit}
+            onEdit={access.canEdit ? setEditGuest : undefined}
+          />
+          {total > pageSize ? (
+            <Pagination
+              page={page}
+              total={total}
+              pageSize={pageSize}
+              itemLabel="guests"
+              onPageChange={goToPage}
+            />
+          ) : null}
+        </div>
       )}
       {access.canEdit && (
         <EditGuestModal

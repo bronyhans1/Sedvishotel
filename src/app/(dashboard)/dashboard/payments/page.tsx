@@ -11,15 +11,20 @@ export const metadata: Metadata = {
   description: `Payment tracking for ${siteConfig.name}`,
 };
 
-async function PaymentsPageLoader() {
-  const data = await loadPaymentsPageData();
+type Props = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+async function PaymentsPageLoader({ searchParams }: Props) {
+  const params = await searchParams;
+  const data = await loadPaymentsPageData(params);
   return <PaymentsPageContent {...data} />;
 }
 
-export default function PaymentsPage() {
+export default function PaymentsPage({ searchParams }: Props) {
   return (
     <Suspense fallback={<PaymentsPageSkeleton />}>
-      <PaymentsPageLoader />
+      <PaymentsPageLoader searchParams={searchParams} />
     </Suspense>
   );
 }

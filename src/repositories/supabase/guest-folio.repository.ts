@@ -1,8 +1,19 @@
+import {
+  folioListGuestName,
+  folioListReservationNumber,
+  folioListRoomNumber,
+  folioMatchesListFilters,
+  prepareFolioList,
+  type FolioListFilters,
+  type FolioListKey,
+  type FolioSettlementLine,
+} from "@/lib/folio/list-order";
 import type {
   CreateFolioEntryRecord,
   CreateGuestFolioRecord,
   IGuestFolioRepository,
 } from "@/repositories/guest-folio.repository";
+import type { PaginatedResult } from "@/repositories/types";
 import type { SupabaseServerClient } from "@/lib/supabase/server";
 import type {
   DbFolioEntry,
@@ -10,6 +21,28 @@ import type {
   DbGuestFolioStatus,
   DbGuestFolioWithRelations,
 } from "@/types/database";
+import type { FolioListItem } from "@/types/folio";
+
+const LIST_READ_BATCH = 1000;
+const ENTRY_ID_CHUNK = 80;
+
+const FOLIO_LIST_KEY_SELECT = `
+  id,
+  folio_number,
+  status,
+  opened_at,
+  closed_at,
+  guest:guests!guest_folios_guest_id_fkey ( full_name ),
+  room:rooms!guest_folios_room_id_fkey ( room_number ),
+  reservation:reservations!guest_folios_reservation_id_fkey (
+    reservation_number,
+    check_in_date,
+    check_out_date,
+    actual_check_out_date,
+    status,
+    room:rooms!reservations_room_id_fkey ( room_number )
+  )
+`;
 
 const FOLIO_SELECT = `
   *,
@@ -196,6 +229,50 @@ export class SupabaseGuestFolioRepository implements IGuestFolioRepository {
       .filter((row): row is DbGuestFolioWithRelations => Boolean(row));
   }
 
+  async listPage(input: {
+    page: number;
+    pageSize: number;
+    filters: FolioListFilters;
+  }): Promise<PaginatedResult<FolioListItem>> {
+    const page = input.page > 0 ? Math.floor(input.page) : 1;
+    const pageSize = input.pageSize > 0 ? Math.floor(input.pageSize) : 25;
+    const keys = await this.listFolioKeys();
+    const headerFilters: FolioListFilters = { ...input.filters, balance: "all" };
+    const candidates = keys.filter((key) =>
+      folioMatchesListFilters(
+        {
+          status: key.status,
+          outstandingBalance: 0,
+          guestName: folioListGuestName(key),
+          roomNumber: folioListRoomNumber(key),
+          reservationNumber: folioListReservationNumber(key),
+          folioNumber: key.folioNumber,
+        },
+        headerFilters
+      )
+    );
+    const lines = await this.listSettlementLines(candidates.map((key) => key.id));
+    const ordered = prepareFolioList(candidates, lines, input.filters);
+    const from = (page - 1) * pageSize;
+    return {
+      data: ordered.slice(from, from + pageSize).map((row) => ({
+        id: row.id,
+        folioNumber: row.folioNumber,
+        status: row.status,
+        guestName: row.guestName,
+        reservationNumber: row.reservationNumber,
+        roomNumber: row.roomNumber,
+        checkInDate: row.checkInDate,
+        checkOutDate: row.checkOutDate,
+        outstandingBalance: row.outstandingBalance,
+        openedAt: row.openedAt,
+      })),
+      total: ordered.length,
+      page,
+      pageSize,
+    };
+  }
+
   async postEntry(input: CreateFolioEntryRecord): Promise<DbFolioEntry> {
     const { data, error } = await this.client
       .from("folio_entries")
@@ -357,5 +434,101 @@ export class SupabaseGuestFolioRepository implements IGuestFolioRepository {
       throw new Error(`Failed to set parent folio: ${error?.message ?? "unknown"}`);
     }
     return data;
+  }
+
+  private async listFolioKeys(): Promise<FolioListKey[]> {
+    const rows: FolioListKey[] = [];
+    for (let offset = 0; ; offset += LIST_READ_BATCH) {
+      const { data, error } = await this.client
+        .from("guest_folios")
+        .select(FOLIO_LIST_KEY_SELECT)
+        .order("id", { ascending: true })
+        .range(offset, offset + LIST_READ_BATCH - 1);
+
+      if (error) {
+        throw new Error(`Failed to load folio list keys: ${error.message}`);
+      }
+
+      const batch = data ?? [];
+      for (const raw of batch) {
+        const row = raw as unknown as {
+          id: string;
+          folio_number: string;
+          status: DbGuestFolioStatus;
+          opened_at: string;
+          closed_at: string | null;
+          guest: { full_name: string | null } | null;
+          room: { room_number: string } | null;
+          reservation: {
+            reservation_number: string;
+            check_in_date: string;
+            check_out_date: string;
+            actual_check_out_date: string | null;
+            status: string;
+            room: { room_number: string } | null;
+          } | null;
+        };
+        rows.push({
+          id: row.id,
+          folioNumber: row.folio_number,
+          status: row.status,
+          guestName: row.guest?.full_name ?? null,
+          reservationNumber: row.reservation?.reservation_number ?? null,
+          folioRoomNumber: row.room?.room_number ?? null,
+          reservationRoomNumber: row.reservation?.room?.room_number ?? null,
+          reservationStatus: row.reservation?.status ?? null,
+          checkInDate: row.reservation?.check_in_date ?? null,
+          scheduledCheckOutDate: row.reservation?.check_out_date ?? null,
+          actualCheckOutDate: row.reservation?.actual_check_out_date ?? null,
+          openedAt: row.opened_at,
+          closedAt: row.closed_at,
+          hasReservation: Boolean(row.reservation),
+        });
+      }
+      if (batch.length < LIST_READ_BATCH) break;
+    }
+    return rows;
+  }
+
+  private async listSettlementLines(
+    folioIds: string[]
+  ): Promise<Map<string, FolioSettlementLine[]>> {
+    const unique = [...new Set(folioIds.filter(Boolean))];
+    const lines = new Map<string, FolioSettlementLine[]>();
+    for (const id of unique) lines.set(id, []);
+    if (unique.length === 0) return lines;
+
+    for (let index = 0; index < unique.length; index += ENTRY_ID_CHUNK) {
+      const chunk = unique.slice(index, index + ENTRY_ID_CHUNK);
+      for (let offset = 0; ; offset += LIST_READ_BATCH) {
+        const { data, error } = await this.client
+          .from("folio_entries")
+          .select("id, folio_id, debit_credit, total, created_at")
+          .in("folio_id", chunk)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(offset, offset + LIST_READ_BATCH - 1);
+
+        if (error) {
+          throw new Error(`Failed to load folio settlement lines: ${error.message}`);
+        }
+
+        const batch = data ?? [];
+        for (const row of batch) {
+          const folioId = row.folio_id;
+          const bucket = lines.get(folioId);
+          if (!bucket) continue;
+          bucket.push({
+            id: row.id,
+            folioId,
+            debitCredit: row.debit_credit,
+            total: Number(row.total),
+            createdAt: row.created_at,
+          });
+        }
+        if (batch.length < LIST_READ_BATCH) break;
+      }
+    }
+    return lines;
   }
 }

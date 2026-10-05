@@ -1,4 +1,6 @@
+import type { OperationalPaymentRow, OperationalTransactionAmount } from "@/lib/payments/operational-summary";
 import type { BaseRepository } from "@/repositories/base.repository";
+import type { PaginatedResult } from "@/repositories/types";
 import type {
   DbPayment,
   DbPaymentTransaction,
@@ -30,6 +32,19 @@ export type AnalyticsPaymentListItem = {
 
 export interface IPaymentRepository {
   getAll(): Promise<DbPaymentWithRelations[]>;
+  /**
+   * One visible page of relation-complete payments.
+   * Search is applied before the page range. `getAll()` is unchanged.
+   */
+  listPage(input: {
+    page: number;
+    pageSize: number;
+    search?: string;
+  }): Promise<PaginatedResult<DbPaymentWithRelations>>;
+  /** Relation-complete payment headers for KPIs and partial-payment context. */
+  listOperationalRows(): Promise<OperationalPaymentRow[]>;
+  /** Transaction amounts for those KPI rows. Not limited to the visible page. */
+  listTransactionAmounts(): Promise<OperationalTransactionAmount[]>;
   /** Column-scoped payment list for analytics (no deep joins). */
   listForAnalytics(): Promise<AnalyticsPaymentListItem[]>;
   getById(id: string): Promise<DbPaymentWithRelations | null>;

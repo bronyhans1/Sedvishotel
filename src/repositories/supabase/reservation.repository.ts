@@ -1,4 +1,10 @@
 import { BLOCKING_RESERVATION_STATUSES } from "@/lib/reservations/constants";
+import {
+  reservationMatchesListFilters,
+  sortReservationListRows,
+  type ReservationListFilters,
+  type ReservationListRow,
+} from "@/lib/reservations/list-order";
 import { isUuid } from "@/lib/reservations/mapper";
 import { throwIfReservationOverlapError } from "@/lib/reservations/room-conflict";
 import { ROOM_ARCHIVED_MARKER } from "@/lib/rooms/constants";
@@ -8,6 +14,7 @@ import type {
   ExtendStayAvailabilityResult,
   IReservationRepository,
 } from "@/repositories/reservation.repository";
+import type { PaginatedResult } from "@/repositories/types";
 import type { SupabaseServerClient } from "@/lib/supabase/server";
 import type {
   DbReservation,
@@ -15,6 +22,7 @@ import type {
   DbReservationWithRelations,
   DbRoomWithType,
 } from "@/types/database";
+import type { BookingSource, ReservationStats, ReservationStatus } from "@/types/reservation";
 
 const RESERVATION_SELECT = `
   *,
@@ -51,6 +59,37 @@ const RESERVATION_ANALYTICS_SELECT = `
     id, slug, name, default_price, capacity, description, amenities
   )
 `;
+
+/** Same required relations as getAll(), without the full nested trees. */
+const RESERVATION_LIST_KEY_SELECT = `
+  id,
+  status,
+  booking_source,
+  check_in_date,
+  check_out_date,
+  actual_check_out_date,
+  reservation_number,
+  guest:guests!reservations_guest_id_fkey!inner (full_name),
+  room:rooms!reservations_room_id_fkey!inner (
+    room_number,
+    room_type:room_types!rooms_room_type_id_fkey!inner (id),
+    floor_record:floors!rooms_floor_id_fkey!inner (id)
+  ),
+  room_type:room_types!reservations_room_type_id_fkey!inner (slug, name)
+`;
+
+const RESERVATION_LIST_COUNT_SELECT = `
+  id,
+  guest:guests!reservations_guest_id_fkey!inner (id),
+  room:rooms!reservations_room_id_fkey!inner (
+    id,
+    room_type:room_types!rooms_room_type_id_fkey!inner (id),
+    floor_record:floors!rooms_floor_id_fkey!inner (id)
+  ),
+  room_type:room_types!reservations_room_type_id_fkey!inner (id)
+`;
+
+const LIST_READ_BATCH = 1000;
 
 const ROOM_SELECT = `
   *,
@@ -96,6 +135,151 @@ export class SupabaseReservationRepository implements IReservationRepository {
     return (data ?? [])
       .map((row) => toReservationWithRelations(row as unknown as ReservationRow))
       .filter((r): r is DbReservationWithRelations => Boolean(r));
+  }
+
+  async listPage(input: {
+    page: number;
+    pageSize: number;
+    businessDate: string;
+    filters: ReservationListFilters;
+  }): Promise<PaginatedResult<DbReservationWithRelations>> {
+    const page = input.page > 0 ? Math.floor(input.page) : 1;
+    const pageSize = input.pageSize > 0 ? Math.floor(input.pageSize) : 25;
+    const ordered = sortReservationListRows(
+      (await this.listVisibleReservationKeys()).filter((row) =>
+        reservationMatchesListFilters(row, input.filters)
+      ),
+      input.businessDate
+    );
+    const from = (page - 1) * pageSize;
+    const pageKeys = ordered.slice(from, from + pageSize);
+    if (pageKeys.length === 0) {
+      return { data: [], total: ordered.length, page, pageSize };
+    }
+
+    const { data, error } = await this.client
+      .from("reservations")
+      .select(RESERVATION_SELECT)
+      .in(
+        "id",
+        pageKeys.map((row) => row.id)
+      );
+
+    if (error) {
+      throw new Error(`Failed to list reservations: ${error.message}`);
+    }
+
+    const byId = new Map<string, DbReservationWithRelations>();
+    for (const raw of data ?? []) {
+      const row = toReservationWithRelations(raw as unknown as ReservationRow);
+      if (row) byId.set(row.id, row);
+    }
+
+    return {
+      data: pageKeys.flatMap((key) => {
+        const row = byId.get(key.id);
+        return row ? [row] : [];
+      }),
+      total: ordered.length,
+      page,
+      pageSize,
+    };
+  }
+
+  async countListStats(): Promise<ReservationStats> {
+    const [total, pending, confirmed, checkedIn, checkedOut, cancelled] =
+      await Promise.all([
+        this.countVisibleReservations(),
+        this.countVisibleReservations("pending"),
+        this.countVisibleReservations("confirmed"),
+        this.countVisibleReservations("checked_in"),
+        this.countVisibleReservations(["checked_out", "checked_out_early"]),
+        this.countVisibleReservations("cancelled"),
+      ]);
+
+    return {
+      total,
+      pending,
+      confirmed,
+      checkedIn,
+      checkedOut,
+      cancelled,
+    };
+  }
+
+  async listVisibleRoomTypeOptions(): Promise<{ id: string; name: string }[]> {
+    const byId = new Map<string, string>();
+    for (const row of await this.listVisibleReservationKeys()) {
+      if (!row.roomTypeId) continue;
+      byId.set(row.roomTypeId, row.roomTypeName);
+    }
+    return [...byId.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private async listVisibleReservationKeys(): Promise<
+    (ReservationListRow & { roomTypeName: string })[]
+  > {
+    const rows: (ReservationListRow & { roomTypeName: string })[] = [];
+    for (let offset = 0; ; offset += LIST_READ_BATCH) {
+      const { data, error } = await this.client
+        .from("reservations")
+        .select(RESERVATION_LIST_KEY_SELECT)
+        .order("id", { ascending: true })
+        .range(offset, offset + LIST_READ_BATCH - 1);
+
+      if (error) {
+        throw new Error(`Failed to load reservation list keys: ${error.message}`);
+      }
+
+      const batch = data ?? [];
+      for (const raw of batch) {
+        const row = raw as unknown as {
+          id: string;
+          status: ReservationStatus;
+          booking_source: BookingSource;
+          check_in_date: string;
+          check_out_date: string;
+          actual_check_out_date: string | null;
+          reservation_number: string;
+          guest: { full_name: string };
+          room: { room_number: string };
+          room_type: { slug: string; name: string };
+        };
+        rows.push({
+          id: row.id,
+          status: row.status,
+          bookingSource: row.booking_source,
+          roomTypeId: row.room_type.slug,
+          roomTypeName: row.room_type.name,
+          checkInDate: row.check_in_date,
+          checkOutDate: row.check_out_date,
+          actualCheckOutDate: row.actual_check_out_date,
+          reservationNumber: row.reservation_number,
+          guestName: row.guest.full_name,
+          roomNumber: row.room.room_number,
+        });
+      }
+      if (batch.length < LIST_READ_BATCH) break;
+    }
+    return rows;
+  }
+
+  private async countVisibleReservations(
+    status?: ReservationStatus | ReservationStatus[]
+  ): Promise<number> {
+    let query = this.client
+      .from("reservations")
+      .select(RESERVATION_LIST_COUNT_SELECT, { count: "exact", head: true });
+    if (Array.isArray(status)) query = query.in("status", status);
+    else if (status) query = query.eq("status", status);
+
+    const { count, error } = await query;
+    if (error) {
+      throw new Error(`Failed to count reservations: ${error.message}`);
+    }
+    return count ?? 0;
   }
 
   async listForAnalytics(): Promise<DbReservationWithRelations[]> {

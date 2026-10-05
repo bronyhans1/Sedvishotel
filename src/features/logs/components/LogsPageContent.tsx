@@ -1,14 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 
+import { Pagination } from "@/components/shared/Pagination";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { StatCard } from "@/components/shared/StatCard";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { siteConfig } from "@/config/site";
 import { formatLogStatusLabel } from "@/lib/activity/labels";
+import { buildPageHref, resetPageParam } from "@/lib/pagination/pagination";
 import type { ActivityLog, LogStats } from "@/types/log";
 import {
   CalendarPlus,
@@ -34,21 +37,53 @@ function LogStatusBadge({ status }: { status: ActivityLog["status"] }) {
 type Props = {
   logs: ActivityLog[];
   stats: LogStats;
+  page: number;
+  total: number;
+  pageSize: number;
+  search: string;
 };
 
-export function LogsPageContent({ logs, stats }: Props) {
-  const [search, setSearch] = useState("");
+export function LogsPageContent({
+  logs,
+  stats,
+  page,
+  total,
+  pageSize,
+  search,
+}: Props) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [draft, setDraft] = useState(search);
+  const [, startTransition] = useTransition();
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return logs;
-    return logs.filter(
-      (l) =>
-        l.user.toLowerCase().includes(q) ||
-        l.action.toLowerCase().includes(q) ||
-        l.module.toLowerCase().includes(q)
-    );
-  }, [logs, search]);
+  useEffect(() => {
+    setDraft(search);
+  }, [search]);
+
+  useEffect(() => {
+    if (draft.trim() === search.trim()) return;
+
+    const handle = window.setTimeout(() => {
+      const params = resetPageParam(new URLSearchParams(searchParams.toString()));
+      const nextSearch = draft.trim();
+      if (nextSearch) params.set("search", nextSearch);
+      else params.delete("search");
+      const query = params.toString();
+      startTransition(() => {
+        router.push(query ? `/dashboard/logs?${query}` : "/dashboard/logs");
+      });
+    }, 400);
+
+    return () => window.clearTimeout(handle);
+  }, [draft, router, search, searchParams]);
+
+  function goToPage(nextPage: number) {
+    startTransition(() => {
+      router.push(
+        buildPageHref("/dashboard/logs", searchParams.toString(), nextPage)
+      );
+    });
+  }
 
   return (
     <PageContainer
@@ -75,9 +110,10 @@ export function LogsPageContent({ logs, stats }: Props) {
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Search user, action, module..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           className="pl-9"
+          aria-label="Search user, action, module"
         />
       </div>
 
@@ -96,14 +132,14 @@ export function LogsPageContent({ logs, stats }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.length === 0 ? (
+              {logs.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                     No activity logs found
                   </td>
                 </tr>
               ) : (
-                filtered.map((log) => (
+                logs.map((log) => (
                   <tr key={log.id} className="hover:bg-muted/30">
                     <td className="px-4 py-3 font-medium">{log.user}</td>
                     <td className="px-4 py-3">{log.action}</td>
@@ -123,6 +159,14 @@ export function LogsPageContent({ logs, stats }: Props) {
           </table>
         </div>
       </div>
+
+      <Pagination
+        page={page}
+        total={total}
+        pageSize={pageSize}
+        itemLabel="logs"
+        onPageChange={goToPage}
+      />
     </PageContainer>
   );
 }
