@@ -162,6 +162,21 @@ export class GuestService implements IGuestService {
     return mapDbGuestToGuest(row);
   }
 
+  async searchGuests(
+    _ctx: ServiceContext,
+    session: AuthSession,
+    query: string
+  ): Promise<Array<{ id: string; fullName: string; phone: string; email: string }>> {
+    this.require(session, "view");
+    const rows = await this.guests.searchAssignable(query, 8);
+    return rows.map((row) => ({
+      id: row.id,
+      fullName: row.full_name,
+      phone: row.phone ?? "",
+      email: row.email ?? "",
+    }));
+  }
+
   async createGuest(
     ctx: ServiceContext,
     session: AuthSession,

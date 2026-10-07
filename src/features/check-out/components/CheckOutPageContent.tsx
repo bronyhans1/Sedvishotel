@@ -52,6 +52,7 @@ type CheckOutPageContentProps = {
   defaultTaxRate: number;
   defaultVatApplied: boolean;
   canOverrideVat: boolean;
+  canWaiveLateCheckout: boolean;
   canRecordPayment: boolean;
   folioBalances: Record<string, number>;
   folioSettlements: Record<string, AuthoritativeSettlement>;
@@ -290,6 +291,7 @@ export function CheckOutPageContent({
   defaultTaxRate,
   defaultVatApplied,
   canOverrideVat,
+  canWaiveLateCheckout,
   canRecordPayment,
   folioBalances,
   folioSettlements,
@@ -525,6 +527,7 @@ export function CheckOutPageContent({
             open={!!lateReservationId}
             onOpenChange={(open) => !open && setLateReservationId(null)}
             onSuccess={refresh}
+            canWaiveLateCheckout={canWaiveLateCheckout}
           />
         </>
       )}

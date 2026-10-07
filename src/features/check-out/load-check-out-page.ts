@@ -91,6 +91,7 @@ export async function loadCheckOutPageData() {
     defaultTaxRate,
     defaultVatApplied: isGlobalVatEnabled(defaultTaxRate),
     canOverrideVat: paymentAccess.canOverrideVat,
+    canWaiveLateCheckout: access.canWaiveLateCheckout,
     canRecordPayment: paymentAccess.canRecord,
     folioBalances,
     folioSettlements,

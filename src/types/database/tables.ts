@@ -939,6 +939,7 @@ export interface DbGroupReservation {
   actual_rooms: number;
   actual_guests: number;
   notes: string | null;
+  preferred_room_type_id: string | null;
   created_by: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;

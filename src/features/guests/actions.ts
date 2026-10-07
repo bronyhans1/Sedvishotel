@@ -10,8 +10,27 @@ import { getGuestService } from "@/lib/guests/get-guest-service";
 import type { GuestFormValues } from "@/types/guest";
 
 export type GuestActionResult =
-  | { success: true }
+  | { success: true; id?: string; fullName?: string; phone?: string; email?: string }
   | { success: false; error: string };
+
+export type GuestSearchResult =
+  | {
+      success: true;
+      guests: Array<{ id: string; fullName: string; phone: string; email: string }>;
+    }
+  | { success: false; error: string };
+
+export async function searchGuestsAction(query: string): Promise<GuestSearchResult> {
+  try {
+    const { session, ctx } = await getServiceContext();
+    const service = await getGuestService();
+    const guests = await service.searchGuests(ctx, session, query);
+    return { success: true, guests };
+  } catch (err) {
+    unstable_rethrow(err);
+    return { success: false, error: toSafeActionError(err) };
+  }
+}
 
 export async function createGuestAction(
   values: GuestFormValues
@@ -23,7 +42,13 @@ export async function createGuestAction(
     revalidatePath("/dashboard/guests");
     revalidatePath(`/dashboard/guests/${created.id}`);
     revalidateDashboardWidgets();
-    return { success: true };
+    return {
+      success: true,
+      id: created.id,
+      fullName: created.fullName,
+      phone: created.phone,
+      email: created.email,
+    };
   } catch (err) {
     unstable_rethrow(err);
     return { success: false, error: toSafeActionError(err) };

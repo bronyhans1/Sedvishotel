@@ -39,6 +39,7 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   "delete",
   "manage",
   "override_vat",
+  "waive_late_checkout",
 ];
 
 export const ROLE_COLUMNS: StaffRoleId[] = [
@@ -81,9 +82,18 @@ function cell(
   edit = false,
   del = false,
   manage = false,
-  overrideVat = false
+  overrideVat = false,
+  waiveLateCheckout = false
 ): Record<PermissionAction, boolean> {
-  return { view, create, edit, delete: del, manage, override_vat: overrideVat };
+  return {
+    view,
+    create,
+    edit,
+    delete: del,
+    manage,
+    override_vat: overrideVat,
+    waive_late_checkout: waiveLateCheckout,
+  };
 }
 
 function buildMatrix(): PermissionMatrix {
@@ -144,6 +154,8 @@ matrix.shift_handover.manager = cell(true, true, true, false, true);
 
 matrix.payments.admin = cell(true, true, true, true, true, true);
 matrix.payments.manager = cell(true, true, true, false, true, true);
+matrix.check_out.admin = cell(true, true, true, true, true, false, true);
+matrix.check_out.manager = cell(true, true, true, false, true, false, true);
 
 export const mockPermissionMatrix: PermissionMatrix = matrix;
 

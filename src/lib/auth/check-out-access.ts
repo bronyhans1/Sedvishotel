@@ -8,8 +8,13 @@ export function getCheckOutAccess(session: AuthSession): CheckOutAccess {
     sessionHasPermission(session, "check_out", "edit") ||
     sessionHasPermission(session, "check_out", "manage");
   const canManageOverstay = sessionHasPermission(session, "check_out", "manage");
+  const canWaiveLateCheckout = sessionHasPermission(
+    session,
+    "check_out",
+    "waive_late_checkout"
+  );
 
-  return { canView, canProcess, canManageOverstay };
+  return { canView, canProcess, canManageOverstay, canWaiveLateCheckout };
 }
 
 export function requireCheckOutView(session: AuthSession): void {

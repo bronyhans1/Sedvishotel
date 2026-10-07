@@ -208,6 +208,7 @@ export function StayDetailsDrawer({
           reservationId={stay.reservationId}
           open={lateCheckOutOpen}
           onOpenChange={setLateCheckOutOpen}
+          canWaiveLateCheckout={checkoutAccess?.canWaiveLateCheckout ?? false}
           onSuccess={() => {
             onEarlyCheckOutSuccess?.();
             onOpenChange(false);

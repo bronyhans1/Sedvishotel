@@ -36,6 +36,7 @@ type LateCheckOutModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
+  canWaiveLateCheckout: boolean;
 };
 
 export function LateCheckOutModal({
@@ -43,6 +44,7 @@ export function LateCheckOutModal({
   open,
   onOpenChange,
   onSuccess,
+  canWaiveLateCheckout,
 }: LateCheckOutModalProps) {
   const toast = useToast();
   const refresh = useLiveRefresh();
@@ -55,6 +57,7 @@ export function LateCheckOutModal({
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
   const [loadingPreview, startPreviewTransition] = useTransition();
+  const waiverSelected = canWaiveLateCheckout && complimentary;
 
   useEffect(() => {
     if (!open || !reservationId) {
@@ -67,7 +70,7 @@ export function LateCheckOutModal({
       const data = await previewLateCheckOutAction(
         reservationId,
         actualTime || undefined,
-        complimentary
+        waiverSelected
       );
       setPreview(data);
       if (data) {
@@ -76,7 +79,7 @@ export function LateCheckOutModal({
         setError("Unable to load late check-out preview.");
       }
     });
-  }, [open, reservationId, actualTime, complimentary]);
+  }, [open, reservationId, actualTime, waiverSelected]);
 
   function handleClose(next: boolean) {
     if (!next) {
@@ -100,7 +103,7 @@ export function LateCheckOutModal({
         notes: notes.trim() || undefined,
         actualCheckoutTime: actualTime || preview.actualCheckoutTime,
         paymentMethod,
-        complimentary,
+        complimentary: waiverSelected,
       });
       if (!result.success) {
         setError(result.error);
@@ -125,7 +128,7 @@ export function LateCheckOutModal({
         <DialogHeader>
           <DialogTitle>Late Check-Out</DialogTitle>
           <DialogDescription>
-            {complimentary
+            {waiverSelected
               ? "Process a complimentary late departure and complete check-out."
               : "Charge a late departure fee and complete check-out."}
           </DialogDescription>
@@ -180,11 +183,20 @@ export function LateCheckOutModal({
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={complimentary}
-                onChange={(e) => setComplimentary(e.target.checked)}
-                className="h-4 w-4 rounded border-input"
+                checked={waiverSelected}
+                disabled={!canWaiveLateCheckout}
+                onChange={(e) => {
+                  if (!canWaiveLateCheckout) return;
+                  setComplimentary(e.target.checked);
+                }}
+                className="h-4 w-4 rounded border-input disabled:opacity-60"
               />
               Complimentary Late Check-Out
+              {!canWaiveLateCheckout ? (
+                <span className="text-xs text-muted-foreground">
+                  Requires override permission
+                </span>
+              ) : null}
             </label>
 
             <div className="space-y-2">
@@ -202,7 +214,7 @@ export function LateCheckOutModal({
               </select>
             </div>
 
-            {!complimentary ? (
+            {!waiverSelected ? (
               <div className="space-y-2">
                 <Label>Payment Method</Label>
                 <select

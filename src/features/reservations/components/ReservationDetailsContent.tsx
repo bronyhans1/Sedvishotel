@@ -633,6 +633,7 @@ export function ReservationDetailsContent({
           open={lateCheckOutOpen}
           onOpenChange={setLateCheckOutOpen}
           onSuccess={refresh}
+          canWaiveLateCheckout={checkoutAccess.canWaiveLateCheckout}
         />
       ) : null}
 

@@ -52,6 +52,7 @@ export type GroupWizardOptions = {
   corporateAccounts: CorporateAccount[];
   roomTypes: Array<{
     id: string;
+    uuid: string;
     name: string;
     defaultPrice: number;
     pricingRules: import("@/types/pricing").RoomTypePricingRule[];
@@ -83,6 +84,7 @@ export async function loadGroupWizardData(): Promise<GroupWizardOptions> {
     .filter((rt) => rt.status === "active")
     .map((rt) => ({
       id: rt.id,
+      uuid: rt.uuid,
       name: rt.name,
       defaultPrice: rt.defaultPrice,
       pricingRules: rt.pricingRules,
@@ -133,6 +135,13 @@ export type GroupDetailData = {
   corporateAccount: CorporateAccount | null;
   businessDate: string;
   checkoutPolicy: import("@/types/late-checkout").CheckoutPolicy;
+  availableRooms: import("@/services/reservation.service").AvailableRoom[];
+  preferredRoomType: {
+    id: string;
+    slug: string;
+    name: string;
+    defaultPrice: number;
+  } | null;
 };
 
 export async function loadGroupDetailPageData(groupId: string): Promise<GroupDetailData> {
@@ -217,6 +226,24 @@ export async function loadGroupDetailPageData(groupId: string): Promise<GroupDet
     corporateAccount = corpRow ? mapDbCorporateAccountToCorporateAccount(corpRow) : null;
   }
 
+  const { groupAssignmentStayWindow } = await import(
+    "@/lib/group-reservations/unassigned-slots"
+  );
+  const stay = groupAssignmentStayWindow(group);
+  let availableRooms: GroupDetailData["availableRooms"] = [];
+  try {
+    const { getReservationService } = await import(
+      "@/lib/reservations/get-reservation-service"
+    );
+    const reservationService = await getReservationService();
+    availableRooms = await reservationService.checkAvailability(ctx, session, {
+      checkIn: stay.checkIn,
+      checkOut: stay.checkOut,
+    });
+  } catch {
+    availableRooms = [];
+  }
+
   const intelligence = buildGroupOperationalIntelligence(
     groupId,
     overview,
@@ -252,6 +279,29 @@ export async function loadGroupDetailPageData(groupId: string): Promise<GroupDet
     });
   }
 
+  let preferredRoomType: GroupDetailData["preferredRoomType"] = null;
+  if (group.preferredRoomTypeId) {
+    try {
+      const { getRoomTypeService } = await import("@/lib/room-types/get-room-type-service");
+      const roomTypeService = await getRoomTypeService();
+      const roomType = await roomTypeService.getById(
+        ctx,
+        session,
+        group.preferredRoomTypeId
+      );
+      if (roomType) {
+        preferredRoomType = {
+          id: roomType.uuid,
+          slug: roomType.id,
+          name: roomType.name,
+          defaultPrice: roomType.defaultPrice,
+        };
+      }
+    } catch {
+      preferredRoomType = null;
+    }
+  }
+
   return {
     group,
     summary,
@@ -265,5 +315,7 @@ export async function loadGroupDetailPageData(groupId: string): Promise<GroupDet
     corporateAccount,
     businessDate,
     checkoutPolicy,
+    availableRooms,
+    preferredRoomType,
   };
 }

@@ -151,6 +151,7 @@ export class GroupReservationService implements IGroupReservationService {
       actual_rooms: 0,
       actual_guests: 0,
       notes: input.notes?.trim() || null,
+      preferred_room_type_id: input.preferredRoomTypeId?.trim() || null,
       created_by: ctx.userId,
     });
 

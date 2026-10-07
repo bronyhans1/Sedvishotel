@@ -4,7 +4,8 @@ export type PermissionAction =
   | "edit"
   | "delete"
   | "manage"
-  | "override_vat";
+  | "override_vat"
+  | "waive_late_checkout";
 
 export type StaffRoleId = "admin" | "manager" | "receptionist" | "housekeeping";
 

@@ -81,6 +81,9 @@ export const MIGRATION_ORDER = [
   "075_hotel_operating_day.sql",
   "076_overstay_engine.sql",
   "077_operational_integrity.sql",
+  "078_group_preferred_room_type.sql",
+  "079_waive_late_checkout_action.sql",
+  "080_waive_late_checkout_permission.sql",
 ] as const;
 
 export const SEED_ORDER = [

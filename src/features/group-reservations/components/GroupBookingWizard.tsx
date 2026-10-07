@@ -109,6 +109,7 @@ export function GroupBookingWizard({ options }: Props) {
       expectedRooms: state.expectedRooms,
       expectedGuests: state.expectedGuests,
       notes: state.notes,
+      preferredRoomTypeId: state.blockRoomTypeId || null,
     };
     const result = await createGroupAction(input);
     if (!result.success) {
@@ -340,7 +341,7 @@ export function GroupBookingWizard({ options }: Props) {
                 >
                   <option value="">Select room type</option>
                   {options.roomTypes.map((rt) => (
-                    <option key={rt.id} value={rt.id}>
+                    <option key={rt.uuid} value={rt.uuid}>
                       {rt.name}
                     </option>
                   ))}
@@ -364,8 +365,10 @@ export function GroupBookingWizard({ options }: Props) {
                 />
               </div>
               <p className="text-sm text-muted-foreground md:col-span-2">
-                Room blocks can be created after the group is saved. Availability is
-                checked via ReservationService.
+                This room type is saved as the group&apos;s preferred type for Assign
+                Rooms. It is an estimate input, not a hold. Create reservation blocks
+                after the group is saved when specific rooms must be held. The room
+                that is actually assigned sets that reservation&apos;s rate.
               </p>
             </div>
           )}
@@ -414,7 +417,7 @@ export function GroupBookingWizard({ options }: Props) {
               </div>
               {(() => {
                 const roomType = options.roomTypes.find(
-                  (rt) => rt.id === state.blockRoomTypeId
+                  (rt) => rt.uuid === state.blockRoomTypeId
                 ) ?? options.roomTypes[0];
                 if (!roomType || !state.arrivalDate || !state.departureDate) {
                   return null;
@@ -451,6 +454,11 @@ export function GroupBookingWizard({ options }: Props) {
               <p>
                 <strong>Rooms/Guests:</strong> {state.expectedRooms} rooms ·{" "}
                 {state.expectedGuests} guests
+              </p>
+              <p>
+                <strong>Preferred room type:</strong>{" "}
+                {options.roomTypes.find((rt) => rt.uuid === state.blockRoomTypeId)?.name ??
+                  "None"}
               </p>
               <p>
                 <strong>Billing:</strong>{" "}

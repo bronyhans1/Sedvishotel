@@ -20,6 +20,7 @@ export function mapDbGroupReservationToGroupReservation(
     actualRooms: row.actual_rooms,
     actualGuests: row.actual_guests,
     notes: row.notes,
+    preferredRoomTypeId: row.preferred_room_type_id ?? null,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

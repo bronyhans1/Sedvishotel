@@ -6,7 +6,8 @@ export type DbPermissionAction =
   | "edit"
   | "delete"
   | "manage"
-  | "override_vat";
+  | "override_vat"
+  | "waive_late_checkout";
 
 export type DbPermissionModule =
   | "dashboard"

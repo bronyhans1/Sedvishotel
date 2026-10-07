@@ -41,6 +41,7 @@ export const PERMISSION_ACTIONS: DbPermissionAction[] = [
   "delete",
   "manage",
   "override_vat",
+  "waive_late_checkout",
 ];
 
 export const SYSTEM_ROLES: { id: DbRoleId; name: string }[] = [

@@ -84,6 +84,8 @@ export type ReservationStats = {
 };
 
 export type ReservationFormValues = {
+  /** Existing guest record. When set, reservation creation links this id and does not create another guest. */
+  guestId?: string;
   guestName: string;
   guestPhone: string;
   guestEmail: string;

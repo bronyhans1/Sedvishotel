@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Activity,
   CreditCard,
@@ -10,25 +11,54 @@ import {
 } from "lucide-react";
 
 import { EnhancedGroupOperationsPanel } from "@/features/group-reservations/components/EnhancedGroupOperationsPanel";
+import { GroupSlotGuestField } from "@/features/group-reservations/components/GroupSlotGuestField";
 import { ReservationBlockVisualization } from "@/features/group-reservations/components/ReservationBlockVisualization";
 import { GroupStatusBadge } from "@/components/group-reservations/GroupStatusBadge";
 import { PricingCard } from "@/components/pricing/PricingCard";
 import { DepartureClassificationBadge } from "@/components/reservations/DepartureClassificationBadge";
 import { ReservationStatusBadge } from "@/components/reservations/ReservationStatusBadge";
+import { SubmitButton } from "@/components/loading/SubmitButton";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency, nightsBetween } from "@/lib/utils";
 import { resolveDepartureClassification } from "@/lib/reservations/departure-classification";
 import { resolveEffectiveCheckOutDate } from "@/lib/reservations/effective-checkout-date";
 import {
+  addGroupReservationAction,
+  assignGroupRoomAction,
   bulkGroupCheckInAction,
   bulkGroupCheckOutAction,
 } from "@/features/group-reservations/actions";
+import {
+  assignmentErrorMessage,
+  assignmentRowControls,
+  assignmentSuccessMessage,
+  claimAssignmentRow,
+  guestRoomAssignmentErrorMessage,
+  releaseAssignmentRow,
+} from "@/lib/group-reservations/assignment-feedback";
+import {
+  placeholderReservationGuest,
+  type AssignableGuest,
+} from "@/lib/group-reservations/guest-identity";
+import {
+  assignmentRoomOffer,
+  groupAvailableRoomsByType,
+  preferredRoomEstimate,
+} from "@/lib/group-reservations/assignment-room-choices";
+import {
+  GROUP_SECTION_SCROLL_CLASS,
+  groupSectionId,
+} from "@/lib/group-reservations/section-nav";
+import {
+  reservationNeedsRoom,
+  unassignedPlaceholderCount,
+} from "@/lib/group-reservations/unassigned-slots";
 import type { GroupDetailData } from "@/features/group-reservations/load-group-pages";
 import { GROUP_BILLING_POLICY_LABELS, GROUP_TYPE_LABELS } from "@/types/group-reservation";
 import { GROUP_TIMELINE_EVENT_LABELS } from "@/types/group-timeline";
-import { formatCurrency } from "@/lib/utils";
 import { siteConfig } from "@/config/site";
 
 const TAB_ITEMS = [
@@ -71,10 +101,173 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
     businessDate,
     checkoutPolicy,
   } = data;
+  const router = useRouter();
+  const toast = useToast();
+  const pendingAssignmentRef = useRef<Set<string>>(new Set());
   const [tab, setTab] = useState(initialTab);
+  const sectionTab = useRef(initialTab);
+  const [sectionRequest, setSectionRequest] = useState(0);
+  const [showOtherRoomTypes, setShowOtherRoomTypes] = useState(false);
   const [timelineFilter, setTimelineFilter] = useState<string>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [actionMsg, setActionMsg] = useState("");
+  const [slotRooms, setSlotRooms] = useState<Record<string, string>>({});
+  const [slotGuests, setSlotGuests] = useState<Record<string, AssignableGuest>>({});
+  const [assignError, setAssignError] = useState("");
+  const [pendingAssignments, setPendingAssignments] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+
+  function claimRow(rowKey: string): boolean {
+    const claim = claimAssignmentRow(pendingAssignmentRef.current, rowKey);
+    if (!claim.accepted) return false;
+    pendingAssignmentRef.current = claim.pending;
+    setPendingAssignments(claim.pending);
+    return true;
+  }
+
+  function releaseRow(rowKey: string) {
+    const pending = releaseAssignmentRow(pendingAssignmentRef.current, rowKey);
+    pendingAssignmentRef.current = pending;
+    setPendingAssignments(pending);
+  }
+
+  async function assignExistingRoom(reservationId: string, roomNumber: string) {
+    const rowKey = `reservation:${reservationId}`;
+    if (!claimRow(rowKey)) return;
+    setAssignError("");
+    try {
+      const result = await assignGroupRoomAction(group.id, reservationId, roomNumber);
+      if (!result.success) {
+        const message = assignmentErrorMessage(result.error);
+        setAssignError(message);
+        toast.error(message);
+        return;
+      }
+      toast.success(assignmentSuccessMessage(roomNumber));
+      router.refresh();
+    } catch {
+      const message = assignmentErrorMessage(undefined);
+      setAssignError(message);
+      toast.error(message);
+    } finally {
+      releaseRow(rowKey);
+    }
+  }
+
+  async function assignPlaceholder(slotId: string) {
+    const roomNumber = slotRooms[slotId];
+    const guest = placeholderReservationGuest(slotGuests[slotId] ?? null);
+    if (!roomNumber || !guest || !claimRow(slotId)) return;
+    setAssignError("");
+    try {
+      const result = await addGroupReservationAction(group.id, {
+        guestId: guest.guestId,
+        guestName: guest.guestName,
+        guestPhone: guest.guestPhone,
+        guestEmail: guest.guestEmail,
+        roomNumber,
+        checkInDate: group.arrivalDate,
+        checkOutDate: group.departureDate,
+        adults: 1,
+        children: 0,
+        bookingSource: "phone",
+        status: "confirmed",
+      });
+      if (!result.success) {
+        const message = guestRoomAssignmentErrorMessage(result.error);
+        setAssignError(message);
+        toast.error(message);
+        return;
+      }
+      setSlotRooms((current) => {
+        const next = { ...current };
+        delete next[slotId];
+        for (const key of Object.keys(next)) {
+          if (next[key] === roomNumber) delete next[key];
+        }
+        return next;
+      });
+      setSlotGuests((current) => {
+        const next = { ...current };
+        delete next[slotId];
+        return next;
+      });
+      toast.success(assignmentSuccessMessage(roomNumber, guest.guestName));
+      router.refresh();
+    } catch {
+      const message = guestRoomAssignmentErrorMessage(undefined);
+      setAssignError(message);
+      toast.error(message);
+    } finally {
+      releaseRow(slotId);
+    }
+  }
+  const placeholderCount = unassignedPlaceholderCount(
+    group.expectedRooms,
+    overview.reservations
+  );
+  const placeholders = Array.from({ length: placeholderCount }, (_, index) => `slot-${index}`);
+  const roomOffer = useMemo(
+    () =>
+      assignmentRoomOffer(
+        data.availableRooms,
+        data.group.preferredRoomTypeId,
+        showOtherRoomTypes
+      ),
+    [data.availableRooms, data.group.preferredRoomTypeId, showOtherRoomTypes]
+  );
+  const stayEstimate = data.preferredRoomType
+    ? preferredRoomEstimate({
+        nightlyRate: data.preferredRoomType.defaultPrice,
+        roomCount: data.group.expectedRooms,
+        nights: nightsBetween(data.group.arrivalDate, data.group.departureDate),
+      })
+    : null;
+
+  function renderRoomChoices(
+    rooms: GroupDetailData["availableRooms"],
+    prefix?: string
+  ) {
+    return groupAvailableRoomsByType(rooms).map((choice) => (
+      <optgroup
+        key={`${prefix ?? "available"}-${choice.roomTypeName}`}
+        label={prefix ? `${prefix} · ${choice.roomTypeName}` : choice.roomTypeName}
+      >
+        {choice.rooms.map((room) => (
+          <option key={room.id} value={room.roomNumber}>
+            {room.roomNumber} · {formatCurrency(room.nightlyRate)}
+          </option>
+        ))}
+      </optgroup>
+    ));
+  }
+
+  function openGroupSection(nextTab: string) {
+    sectionTab.current = nextTab;
+    setTab(nextTab);
+    setSectionRequest((current) => current + 1);
+  }
+
+  useEffect(() => {
+    const target = sectionRequest === 0 ? initialTab : sectionTab.current;
+    const sectionId = groupSectionId(target);
+    if (!sectionId) return;
+    if (sectionRequest === 0 && initialTab === "overview") return;
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        document.getElementById(sectionId)?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [initialTab, sectionRequest]);
 
   const filteredTimeline = useMemo(() => {
     if (timelineFilter === "all") return timeline;
@@ -145,7 +338,7 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
         financial={financial}
         groupId={group.id}
         canManage={access.canManage}
-        onTabChange={setTab}
+        onTabChange={openGroupSection}
       />
 
       {actionMsg && (
@@ -201,7 +394,39 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
       )}
 
       {tab === "reservations" && (
-        <div className="mt-6">
+        <div id={groupSectionId("reservations") ?? undefined} className={`mt-6 ${GROUP_SECTION_SCROLL_CLASS}`}>
+          <p className="mb-3 text-sm text-muted-foreground">
+            {data.preferredRoomType
+              ? `Preferred room type: ${data.preferredRoomType.name}. Matching available rooms are listed first. The room you assign sets that reservation's rate.`
+              : "This group has no preferred room type. Every room available for these dates is listed. The room you assign sets that reservation's rate."}
+          </p>
+          {stayEstimate && data.preferredRoomType ? (
+            <p className="mb-3 text-sm text-muted-foreground">
+              Estimate only: {stayEstimate.roomCount} × {data.preferredRoomType.name} ×{" "}
+              {stayEstimate.nights} night{stayEstimate.nights === 1 ? "" : "s"} at{" "}
+              {formatCurrency(stayEstimate.nightlyRate)} per night ={" "}
+              {formatCurrency(stayEstimate.subtotal)} before tax and service charge.
+              Confirmed charges come from the assigned reservations and the master folio.
+            </p>
+          ) : null}
+          {roomOffer.hasPreference && roomOffer.preferred.length === 0 ? (
+            <p className="mb-3 text-sm text-muted-foreground">
+              No available {data.preferredRoomType?.name ?? "preferred"} rooms match this
+              group&apos;s dates. Enable other room types to view additional available rooms.
+            </p>
+          ) : null}
+          {roomOffer.hasPreference ? (
+            <div className="mb-3">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setShowOtherRoomTypes((current) => !current)}
+              >
+                {showOtherRoomTypes ? "Show preferred room type only" : "Show other room types"}
+              </Button>
+            </div>
+          ) : null}
           <div className="mb-4 flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={selectAll}>Select All</Button>
             {access.canManage && (
@@ -251,7 +476,47 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
                     </td>
                     <td className="px-4 py-2 font-mono text-xs">{r.reservationNumber}</td>
                     <td className="px-4 py-2">{r.guestName}</td>
-                    <td className="px-4 py-2">{r.roomNumber || "—"}</td>
+                    <td className="px-4 py-2">
+                      {reservationNeedsRoom(r) ? (
+                        <select
+                          className="h-8 rounded-md border bg-background px-2 text-sm"
+                          defaultValue=""
+                          aria-label={`Assign room for ${r.reservationNumber}`}
+                          disabled={
+                            pendingAssignments.has(`reservation:${r.id}`) ||
+                            data.availableRooms.length === 0
+                          }
+                          onChange={(event) => {
+                            const roomNumber = event.target.value;
+                            if (!roomNumber) return;
+                            void assignExistingRoom(r.id, roomNumber);
+                          }}
+                        >
+                          <option value="">
+                            {pendingAssignments.has(`reservation:${r.id}`)
+                              ? "Assigning…"
+                              : "Choose room"}
+                          </option>
+                          {roomOffer.hasPreference && showOtherRoomTypes ? (
+                            <>
+                              {renderRoomChoices(roomOffer.preferred, "Preferred")}
+                              {renderRoomChoices(roomOffer.alternatives, "Other")}
+                            </>
+                          ) : (
+                            renderRoomChoices(roomOffer.visible)
+                          )}
+                        </select>
+                      ) : (
+                        r.roomNumber || "—"
+                      )}
+                      {data.preferredRoomType &&
+                      r.roomNumber &&
+                      r.roomTypeId !== data.preferredRoomType.slug ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Assigned {r.roomTypeName} · {formatCurrency(r.chargedRate)} / night
+                        </p>
+                      ) : null}
+                    </td>
                     <td className="px-4 py-2">
                       {r.checkInDate} → {resolveEffectiveCheckOutDate(r)}
                     </td>
@@ -282,14 +547,96 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
                   </tr>
                   );
                 })}
+                {placeholders.map((slotId, index) => {
+                  const row = assignmentRowControls({
+                    selectedRoom: slotRooms[slotId] ?? "",
+                    guestSelected: Boolean(slotGuests[slotId]?.id),
+                    pending: pendingAssignments,
+                    rowKey: slotId,
+                    roomsAvailable: roomOffer.visible.length > 0,
+                  });
+                  return (
+                  <tr key={slotId}>
+                    <td className="px-4 py-2" />
+                    <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
+                      Unassigned {index + 1}
+                    </td>
+                    <td className="px-4 py-2">
+                      <GroupSlotGuestField
+                        disabled={row.submitting}
+                        selected={slotGuests[slotId] ?? null}
+                        onSelect={(guest) =>
+                          setSlotGuests((current) => ({ ...current, [slotId]: guest }))
+                        }
+                        onClear={() =>
+                          setSlotGuests((current) => {
+                            const next = { ...current };
+                            delete next[slotId];
+                            return next;
+                          })
+                        }
+                      />
+                    </td>
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <select
+                          className="h-8 rounded-md border bg-background px-2 text-sm"
+                          value={slotRooms[slotId] ?? ""}
+                          aria-label={`Room for unassigned slot ${index + 1}`}
+                          disabled={row.selectorDisabled}
+                          onChange={(event) =>
+                            setSlotRooms((current) => ({
+                              ...current,
+                              [slotId]: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Choose room</option>
+                          {roomOffer.hasPreference && showOtherRoomTypes ? (
+                            <>
+                              {renderRoomChoices(roomOffer.preferred, "Preferred")}
+                              {renderRoomChoices(roomOffer.alternatives, "Other")}
+                            </>
+                          ) : (
+                            renderRoomChoices(roomOffer.visible)
+                          )}
+                        </select>
+                        <SubmitButton
+                          type="button"
+                          size="sm"
+                          loading={row.submitting}
+                          loadingLabel="Assigning…"
+                          disabled={row.assignDisabled}
+                          onClick={() => void assignPlaceholder(slotId)}
+                        >
+                          Assign
+                        </SubmitButton>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2">
+                      {group.arrivalDate} → {group.departureDate}
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">Unassigned</td>
+                    <td className="px-4 py-2" />
+                  </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+          {assignError ? (
+            <p className="mt-3 text-sm text-destructive">{assignError}</p>
+          ) : null}
+          {placeholderCount > 0 && data.availableRooms.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              No rooms are eligible for {group.arrivalDate} → {group.departureDate}.
+            </p>
+          ) : null}
         </div>
       )}
 
       {tab === "guests" && (
-        <div className="mt-6">
+        <div id={groupSectionId("guests") ?? undefined} className={`mt-6 ${GROUP_SECTION_SCROLL_CLASS}`}>
           <div className="grid gap-3">
             {overview.reservations.map((r) => {
               const departure =
@@ -353,7 +700,7 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
       )}
 
       {tab === "timeline" && (
-        <div className="mt-6 space-y-4">
+        <div id={groupSectionId("timeline") ?? undefined} className={`mt-6 space-y-4 ${GROUP_SECTION_SCROLL_CLASS}`}>
           <div className="flex flex-wrap gap-2">
             {TIMELINE_CATEGORIES.map((cat) => (
               <Button
@@ -390,7 +737,7 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
       )}
 
       {tab === "folio" && (
-        <div className="mt-6 space-y-4">
+        <div id={groupSectionId("folio") ?? undefined} className={`mt-6 space-y-4 ${GROUP_SECTION_SCROLL_CLASS}`}>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Accommodation</CardTitle></CardHeader><CardContent className="text-lg font-bold">{formatCurrency(financial?.totalCharges ?? 0)}</CardContent></Card>
             <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Payments</CardTitle></CardHeader><CardContent className="text-lg font-bold text-emerald-600">{formatCurrency(financial?.totalPayments ?? 0)}</CardContent></Card>
@@ -438,13 +785,13 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
       )}
 
       {tab === "blocks" && (
-        <div className="mt-6">
+        <div id={groupSectionId("blocks") ?? undefined} className={`mt-6 ${GROUP_SECTION_SCROLL_CLASS}`}>
           <ReservationBlockVisualization insights={intelligence.blockInsights} />
         </div>
       )}
 
       {tab === "invoices" && (
-        <div className="mt-6">
+        <div id={groupSectionId("invoices") ?? undefined} className={`mt-6 ${GROUP_SECTION_SCROLL_CLASS}`}>
           <Card>
             <CardContent className="flex flex-col items-center py-12 text-center text-muted-foreground">
               <FileText className="mb-3 h-10 w-10 opacity-50" />
@@ -460,7 +807,7 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
       )}
 
       {tab === "payments" && (
-        <div className="mt-6">
+        <div id={groupSectionId("payments") ?? undefined} className={`mt-6 ${GROUP_SECTION_SCROLL_CLASS}`}>
           <Card>
             <CardContent className="flex flex-col items-center py-12 text-center text-muted-foreground">
               <CreditCard className="mb-3 h-10 w-10 opacity-50" />
@@ -474,7 +821,7 @@ export function GroupDetailPageContent({ data, initialTab = "overview" }: Props)
       )}
 
       {tab === "activity" && (
-        <div className="mt-6">
+        <div id={groupSectionId("activity") ?? undefined} className={`mt-6 ${GROUP_SECTION_SCROLL_CLASS}`}>
           <Card>
             <CardContent className="py-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">

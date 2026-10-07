@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  isPermissionActionApplicable,
   PERMISSION_ACTIONS,
   PERMISSION_MODULES,
   ROLE_COLUMNS,
@@ -19,11 +20,8 @@ const actionLabels: Record<PermissionAction, string> = {
   delete: "Delete",
   manage: "Manage",
   override_vat: "Override VAT",
+  waive_late_checkout: "Waive Late Check-Out",
 };
-
-function isActionApplicable(moduleId: PermissionModule, action: PermissionAction): boolean {
-  return action !== "override_vat" || moduleId === "payments";
-}
 
 const roleLabels: Record<StaffRoleId, string> = {
   admin: "Admin",
@@ -86,7 +84,10 @@ export function PermissionMatrixTable({ matrix, readOnly = true, onToggle }: Pro
                 </td>
                 {ROLE_COLUMNS.map((role) =>
                   (PERMISSION_ACTIONS as PermissionAction[]).map((action) => {
-                    const applicable = isActionApplicable(mod.id as PermissionModule, action);
+                    const applicable = isPermissionActionApplicable(
+                      mod.id as PermissionModule,
+                      action
+                    );
                     const checked = applicable
                       ? matrix[mod.id as PermissionModule][role][action]
                       : false;

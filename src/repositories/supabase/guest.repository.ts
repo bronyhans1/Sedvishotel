@@ -156,6 +156,26 @@ export class SupabaseGuestRepository implements IGuestRepository {
     return data;
   }
 
+  async searchAssignable(query: string, limit = 8): Promise<DbGuest[]> {
+    const safe = query.trim().replace(/[%_,.()"'\\]/g, "");
+    if (safe.length < 2) return [];
+    const pattern = `%${safe}%`;
+    const { data, error } = await this.client
+      .from("guests")
+      .select(
+        "id, full_name, phone, email, notes, nationality, id_type, id_number, address, guest_status, vip_status, total_visits, total_spent, document_urls, created_at, updated_at"
+      )
+      .or(`full_name.ilike."${pattern}",phone.ilike."${pattern}"`)
+      .order("full_name", { ascending: true })
+      .limit(20);
+
+    if (error) {
+      throw new Error(`Failed to search guests: ${error.message}`);
+    }
+
+    return (data ?? []).filter((row) => !isGuestArchived(row)).slice(0, limit);
+  }
+
   async findByPhone(phone: string): Promise<DbGuest | null> {
     const trimmed = phone.trim();
     if (!trimmed) return null;

@@ -17,6 +17,7 @@ import {
 import { computeTransactionTotals, resolvePaymentStatusFromTotals } from "@/lib/payments/totals";
 import { sessionHasPermission } from "@/lib/auth/permissions";
 import { permissionCode } from "@/lib/database/rbac";
+import { isGuestArchived } from "@/lib/guests/mapper";
 import { mapDbReservationToReservation } from "@/lib/reservations/mapper";
 import type { ReservationListFilters } from "@/lib/reservations/list-order";
 import { OPERATIONAL_LIST_PAGE_SIZE } from "@/lib/pagination/constants";
@@ -46,10 +47,12 @@ import {
   computeRoomMovePriceDifference,
 } from "@/lib/reservations/room-move";
 import { canLateCheckOut } from "@/lib/reservations/late-checkout";
+import { lateCheckoutPolicyLabel } from "@/lib/reservations/late-checkout-fee";
 import {
-  computeLateCheckoutFee,
-  lateCheckoutPolicyLabel,
-} from "@/lib/reservations/late-checkout-fee";
+  buildLateCheckoutActivityMetadata,
+  LateCheckoutWaiverForbidden,
+  resolveLateCheckoutWaiver,
+} from "@/lib/reservations/late-checkout-waiver";
 import { buildActiveStaysFromReservations } from "@/lib/stays/mapper";
 import { computeStayStats } from "@/lib/stays/stats";
 import { normalizeRoomNumber } from "@/lib/rooms/floor-layout";
@@ -182,6 +185,8 @@ export type AvailableRoom = {
   floorLabel: string;
   roomTypeName: string;
   roomTypeId: string;
+  /** room_types.id. Used to match a group's preferred room type. */
+  roomTypeUuid: string;
   nightlyRate: number;
 };
 
@@ -970,6 +975,15 @@ export class ReservationService implements IReservationService {
   private async resolveOrCreateGuest(
     values: ReservationFormValues
   ): Promise<string> {
+    const linkedGuestId = values.guestId?.trim();
+    if (linkedGuestId) {
+      const linked = await this.guests.getById(linkedGuestId);
+      if (!linked || isGuestArchived(linked)) {
+        throw new ServiceError("Guest not found.", "NOT_FOUND", 404);
+      }
+      return linked.id;
+    }
+
     if (!values.guestName.trim()) {
       throw new ServiceError("Guest name is required.", "VALIDATION", 400);
     }
@@ -1259,6 +1273,7 @@ export class ReservationService implements IReservationService {
         floorLabel: resolveFloorLabel(room),
         roomTypeName: room.room_type.name,
         roomTypeId: room.room_type.slug,
+        roomTypeUuid: room.room_type_id,
         nightlyRate: Number(room.room_type.default_price),
       }));
   }
@@ -2550,11 +2565,13 @@ export class ReservationService implements IReservationService {
     }
 
     const roomRate = Number(row.room_rate);
-    const feeResult = computeLateCheckoutFee({
+    const resolution = resolveLateCheckoutWaiver({
       policy,
       actualCheckoutTime,
       roomRate,
-      complimentary,
+      requestedComplimentary: Boolean(complimentary),
+      canWaive: sessionHasPermission(session, "check_out", "waive_late_checkout"),
+      mode: "preview",
     });
 
     return {
@@ -2566,14 +2583,14 @@ export class ReservationService implements IReservationService {
       scheduledCheckOutDate: row.check_out_date,
       policyCheckOutTime: policy.checkOutTime,
       actualCheckoutTime,
-      lateCheckoutFee: feeResult.fee,
-      hoursLate: feeResult.hoursLate,
-      policyType: feeResult.policyType,
-      policyLabel: lateCheckoutPolicyLabel(feeResult.policyType),
+      lateCheckoutFee: resolution.fee,
+      hoursLate: resolution.hoursLate,
+      policyType: resolution.policyType,
+      policyLabel: lateCheckoutPolicyLabel(resolution.policyType),
       roomRate,
       balance: Number(row.balance),
       totalAmount: Number(row.total_amount),
-      complimentary,
+      complimentary: resolution.complimentary,
     };
   }
 
@@ -2627,15 +2644,25 @@ export class ReservationService implements IReservationService {
       );
     }
 
-    const complimentary = Boolean(input.complimentary);
     const roomRate = Number(row.room_rate);
-    const feeResult = computeLateCheckoutFee({
-      policy,
-      actualCheckoutTime,
-      roomRate,
-      complimentary,
-    });
-    const fee = feeResult.fee;
+    let resolution;
+    try {
+      resolution = resolveLateCheckoutWaiver({
+        policy,
+        actualCheckoutTime,
+        roomRate,
+        requestedComplimentary: Boolean(input.complimentary),
+        canWaive: sessionHasPermission(session, "check_out", "waive_late_checkout"),
+        mode: "complete",
+      });
+    } catch (error) {
+      if (error instanceof LateCheckoutWaiverForbidden) {
+        throw new ServiceError(error.message, "FORBIDDEN", 403);
+      }
+      throw error;
+    }
+    const complimentary = resolution.complimentary;
+    const fee = resolution.fee;
 
     if (!complimentary && fee <= 0) {
       throw new ServiceError("Late check-out fee must be greater than zero.", "VALIDATION", 400);
@@ -2687,8 +2714,8 @@ export class ReservationService implements IReservationService {
       late_checkout_notes: notes,
       late_checkout_at: lateCheckoutAt,
       late_checkout_complimentary: complimentary,
-      late_checkout_hours_late: feeResult.hoursLate,
-      late_checkout_policy_type: feeResult.policyType,
+      late_checkout_hours_late: resolution.hoursLate,
+      late_checkout_policy_type: resolution.policyType,
       ...this.statusTimestamps("checked_out", previousStatus),
     });
 
@@ -2705,18 +2732,15 @@ export class ReservationService implements IReservationService {
       action: `Late check-out ${updated.reservation_number}`,
       actionCode: ActivityActionCodes.RESERVATION_LATE_CHECKOUT,
       entityId: updated.id,
-      metadata: {
-        reservation_number: updated.reservation_number,
+      metadata: buildLateCheckoutActivityMetadata({
+        reservationNumber: updated.reservation_number,
         guest: row.guest.full_name,
         room: row.room.room_number,
-        fee,
-        complimentary,
-        hours_late: feeResult.hoursLate,
-        policy_type: feeResult.policyType,
+        resolution,
         reason: trimmedReason,
-        actual_checkout_time: actualCheckoutTime,
-        late_checkout_at: lateCheckoutAt,
-      },
+        actualCheckoutTime,
+        lateCheckoutAt,
+      }),
     });
 
     const detail = await this.reservations.getById(updated.id);

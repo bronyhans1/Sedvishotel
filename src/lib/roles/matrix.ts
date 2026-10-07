@@ -77,6 +77,15 @@ export function mapDbRolesToDefinitions(
   }));
 }
 
+export function isPermissionActionApplicable(
+  moduleId: string,
+  action: PermissionAction
+): boolean {
+  if (action === "override_vat") return moduleId === "payments";
+  if (action === "waive_late_checkout") return moduleId === "check_out";
+  return true;
+}
+
 export { PERMISSION_ACTIONS, PERMISSION_MODULES };
 
 export const ROLE_COLUMNS: StaffRoleId[] = [

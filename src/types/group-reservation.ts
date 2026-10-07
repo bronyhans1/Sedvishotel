@@ -47,6 +47,8 @@ export type GroupReservation = {
   actualRooms: number;
   actualGuests: number;
   notes: string | null;
+  /** Room type UUID. Null on groups created before this preference existed. */
+  preferredRoomTypeId: string | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -80,6 +82,8 @@ export type CreateGroupInput = {
   expectedRooms?: number;
   expectedGuests?: number;
   notes?: string;
+  /** Room type UUID from room_types.id. Omit or null when staff did not choose one. */
+  preferredRoomTypeId?: string | null;
 };
 
 export type UpdateGroupInput = Partial<

@@ -11,6 +11,7 @@ const ACTION_LABELS: Record<string, string> = {
   edit: "Edit",
   delete: "Delete",
   manage: "Manage",
+  waive_late_checkout: "Waive Late Check-Out",
 };
 
 /** Human-friendly verbs for specific module + action pairs */
@@ -89,6 +90,7 @@ const PERMISSION_PHRASES: Record<string, string> = {
   "check_out.edit": "Edit Check-Out",
   "check_out.delete": "Delete Check-Out Records",
   "check_out.manage": "Manage Check-Out",
+  "check_out.waive_late_checkout": "Waive Late Check-Out Fee",
   "active_stays.view": "View Active Stays",
   "active_stays.create": "Create Active Stays",
   "active_stays.edit": "Edit Active Stays",

@@ -1,3 +1,4 @@
+import { repeatedGuestIdentityNames } from "@/lib/group-reservations/guest-identity";
 import type {
   GroupIntelligenceContext,
   SmartAlert,
@@ -304,10 +305,11 @@ export function deriveSmartAlerts(
     );
   }
 
-  const guestNames = overview.reservations
-    .filter((r) => r.guestName && r.status !== "cancelled")
-    .map((r) => r.guestName.trim().toLowerCase());
-  const duplicates = guestNames.filter((n, i) => guestNames.indexOf(n) !== i);
+  const duplicates = repeatedGuestIdentityNames(
+    overview.reservations
+      .filter((r) => r.guestName && r.status !== "cancelled")
+      .map((r) => r.guestName)
+  );
   if (duplicates.length > 0) {
     alerts.push(
       alert(

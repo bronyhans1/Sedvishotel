@@ -38,6 +38,8 @@ export interface IGuestRepository {
   getById(id: string): Promise<DbGuest | null>;
   findByEmail(email: string): Promise<DbGuest | null>;
   findByPhone(phone: string): Promise<DbGuest | null>;
+  /** Small name/phone search for assignment. Does not replace getAll() or listPage(). */
+  searchAssignable(query: string, limit?: number): Promise<DbGuest[]>;
   create(
     data: Omit<
       DbGuest,
