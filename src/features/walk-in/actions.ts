@@ -54,6 +54,14 @@ export async function completeWalkInAction(
     return { success: true, ...result };
   } catch (err) {
     unstable_rethrow(err);
+    const message = err instanceof Error ? err.message : "unknown";
+    const constraint =
+      message.match(/unique constraint "([^"]+)"/i)?.[1] ?? null;
+    console.error("[walk-in] completeWalkIn failed", {
+      name: err instanceof Error ? err.name : "unknown",
+      constraint,
+      message,
+    });
     return { success: false, error: toSafeActionError(err) };
   }
 }

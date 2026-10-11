@@ -562,19 +562,17 @@ export class SupabaseReservationRepository implements IReservationRepository {
 
   async getNextReservationNumber(): Promise<string> {
     const year = new Date().getFullYear();
-    const prefix = `SHMS-${year}-`;
+    const { data, error } = await this.client.rpc("next_reservation_number", {
+      p_year: year,
+    });
 
-    const { count, error } = await this.client
-      .from("reservations")
-      .select("*", { count: "exact", head: true })
-      .like("reservation_number", `${prefix}%`);
-
-    if (error) {
-      throw new Error(`Failed to generate reservation number: ${error.message}`);
+    if (error || typeof data !== "string" || !/^SHMS-\d{4}-\d{4,}$/.test(data)) {
+      throw new Error(
+        `Failed to generate reservation number: ${error?.message ?? "empty response"}`
+      );
     }
 
-    const seq = String((count ?? 0) + 1).padStart(4, "0");
-    return `${prefix}${seq}`;
+    return data;
   }
 
   async create(

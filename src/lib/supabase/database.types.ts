@@ -229,6 +229,12 @@ export type Database = {
         Args: Record<string, never>;
         Returns: string;
       };
+      next_reservation_number: {
+        Args: {
+          p_year: number;
+        };
+        Returns: string;
+      };
       next_invoice_number_locked: {
         Args: Record<string, never>;
         Returns: string;
