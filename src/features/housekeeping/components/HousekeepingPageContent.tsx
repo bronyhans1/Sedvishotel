@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { HousekeepingEmptyState } from "@/components/housekeeping/HousekeepingEmptyState";
 import { HousekeepingRoomCard } from "@/components/housekeeping/HousekeepingRoomCard";
@@ -12,7 +12,14 @@ import { StatCard } from "@/components/shared/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { HousekeepingAccess } from "@/lib/auth/housekeeping-access.types";
 import { siteConfig } from "@/config/site";
-import type { HousekeepingTask, HousekeepingStats, CleaningStatus } from "@/types/housekeeping";
+import {
+  applyConfirmedBoardTransition,
+  mergeBoardTasksWithOverrides,
+  statsFromBoardTasks,
+  type BoardStatusOverride,
+  type ConfirmedHousekeepingTransition,
+} from "@/lib/housekeeping/board-local-state";
+import type { HousekeepingTask, CleaningStatus } from "@/types/housekeeping";
 import { Brush, CheckCircle, Clock, Wrench } from "lucide-react";
 
 const COLUMNS: { status: CleaningStatus; title: string; headerClass: string }[] =
@@ -41,19 +48,30 @@ const COLUMNS: { status: CleaningStatus; title: string; headerClass: string }[] 
 
 type HousekeepingPageContentProps = {
   tasks: HousekeepingTask[];
-  stats: HousekeepingStats;
+  stats: { pendingCleaning: number; currentlyCleaning: number; readyRooms: number; maintenanceRooms: number };
   access: HousekeepingAccess;
   departureWatch: HousekeepingTask[];
 };
 
 export function HousekeepingPageContent({
-  tasks,
-  stats,
+  tasks: serverTasks,
   access,
   departureWatch,
 }: HousekeepingPageContentProps) {
   const [selected, setSelected] = useState<HousekeepingTask | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [boardTasks, setBoardTasks] = useState(serverTasks);
+  const [overrides, setOverrides] = useState<BoardStatusOverride[]>([]);
+
+  useEffect(() => {
+    const merged = mergeBoardTasksWithOverrides(serverTasks, overrides);
+    setBoardTasks(merged.tasks);
+    setOverrides(merged.overrides);
+    // Only re-merge when authoritative server props change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- overrides applied inside merge; do not re-run on overrides
+  }, [serverTasks]);
+
+  const stats = useMemo(() => statsFromBoardTasks(boardTasks), [boardTasks]);
 
   const byColumn = useMemo(() => {
     const map: Record<CleaningStatus, HousekeepingTask[]> = {
@@ -62,11 +80,27 @@ export function HousekeepingPageContent({
       ready: [],
       maintenance: [],
     };
-    for (const t of tasks) {
+    for (const t of boardTasks) {
       map[t.status].push(t);
     }
     return map;
-  }, [tasks]);
+  }, [boardTasks]);
+
+  function handleConfirmedTransition(
+    roomId: string,
+    transition: ConfirmedHousekeepingTransition
+  ) {
+    setBoardTasks((prev) => {
+      const result = applyConfirmedBoardTransition(prev, roomId, transition);
+      if (result.override) {
+        setOverrides((current) => [
+          ...current.filter((o) => o.roomId !== roomId),
+          result.override!,
+        ]);
+      }
+      return result.tasks;
+    });
+  }
 
   return (
     <PageContainer
@@ -130,7 +164,7 @@ export function HousekeepingPageContent({
         </Card>
       ) : null}
 
-      {tasks.length === 0 ? (
+      {boardTasks.length === 0 ? (
         <HousekeepingEmptyState />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -153,7 +187,7 @@ export function HousekeepingPageContent({
                 ) : (
                   byColumn[col.status].map((task) => (
                     <HousekeepingRoomCard
-                      key={task.id}
+                      key={task.roomId}
                       task={task}
                       onClick={() => {
                         setSelected(task);
@@ -173,6 +207,7 @@ export function HousekeepingPageContent({
         open={panelOpen}
         onOpenChange={setPanelOpen}
         access={access}
+        onConfirmedTransition={handleConfirmedTransition}
       />
     </PageContainer>
   );

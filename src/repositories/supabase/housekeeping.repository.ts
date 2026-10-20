@@ -35,6 +35,30 @@ export class SupabaseHousekeepingRepository implements IHousekeepingRepository {
     return data;
   }
 
+  async findLatestByRoomIds(roomIds: string[]): Promise<DbHousekeepingTask[]> {
+    if (roomIds.length === 0) return [];
+
+    const { data, error } = await this.client
+      .from("housekeeping_tasks")
+      .select("*")
+      .in("room_id", roomIds)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw new Error(
+        `Failed to batch-load housekeeping tasks: ${error.message}`
+      );
+    }
+
+    const latestByRoom = new Map<string, DbHousekeepingTask>();
+    for (const row of data ?? []) {
+      if (!latestByRoom.has(row.room_id)) {
+        latestByRoom.set(row.room_id, row);
+      }
+    }
+    return Array.from(latestByRoom.values());
+  }
+
   async findAll(status?: DbHousekeepingStatus): Promise<DbHousekeepingTask[]> {
     let query = this.client
       .from("housekeeping_tasks")

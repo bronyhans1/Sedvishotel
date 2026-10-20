@@ -38,6 +38,7 @@ export default async function DashboardLayout({
   let currentUser: CurrentUser | null = null;
 
   if (isSupabaseConfigured()) {
+    // Auth must resolve before shell/data — do not defer past protected UI.
     currentUser = await getCurrentUser();
     if (!currentUser) {
       authDebug("dashboard.layout.redirect", {
@@ -53,18 +54,25 @@ export default async function DashboardLayout({
     }
   }
 
-  const branding = await loadBranding();
-  const currencyConfig = await getCurrencyConfig();
+  // Independent shell dependencies — parallel after auth gate.
+  // Notifications/handover reuse getCachedAuthSession within this request.
+  const [
+    branding,
+    currencyConfig,
+    notifications,
+    shiftHandoverAttention,
+    pendingHandoverReview,
+  ] = await Promise.all([
+    loadBranding(),
+    getCurrencyConfig(),
+    currentUser
+      ? loadNavbarNotifications()
+      : Promise.resolve({ preview: [], unreadCount: 0 }),
+    currentUser ? loadShiftHandoverAttentionCount() : Promise.resolve(0),
+    currentUser ? loadPendingHandoverAcknowledgement() : Promise.resolve(null),
+  ]);
+
   setRuntimeCurrencyConfig(currencyConfig);
-  const notifications = currentUser
-    ? await loadNavbarNotifications()
-    : { preview: [], unreadCount: 0 };
-  const [shiftHandoverAttention, pendingHandoverReview] = currentUser
-    ? await Promise.all([
-        loadShiftHandoverAttentionCount(),
-        loadPendingHandoverAcknowledgement(),
-      ])
-    : [0, null];
 
   const navBadges: Record<string, string> =
     shiftHandoverAttention > 0

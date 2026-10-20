@@ -3,6 +3,8 @@
 import { useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { markLocalMutationRefresh } from "@/hooks/shms-refresh-coalesce";
+
 export const SHMS_MUTATION_EVENT = "shms:mutation";
 
 /**
@@ -15,6 +17,7 @@ export function useLiveRefresh() {
   const [, startTransition] = useTransition();
 
   return useCallback(() => {
+    markLocalMutationRefresh();
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event(SHMS_MUTATION_EVENT));
     }

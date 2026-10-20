@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 
 import { toSafeActionError } from "@/lib/actions/safe-error";
-import { revalidateDashboardWidgets } from "@/lib/cache/revalidate-operational-paths";
 import { getServiceContext } from "@/lib/auth/service-context";
 import { getHousekeepingService } from "@/lib/housekeeping/get-housekeeping-service";
 
@@ -12,10 +11,14 @@ export type HousekeepingActionResult =
   | { success: true }
   | { success: false; error: string };
 
+/**
+ * Invalidate housekeeping + rooms + dashboard occupancy widgets.
+ * Revenue/reports are not revalidated here — HK status changes do not alter those payloads.
+ */
 function revalidateHousekeeping() {
   revalidatePath("/dashboard/housekeeping");
   revalidatePath("/dashboard/rooms");
-  revalidateDashboardWidgets();
+  revalidatePath("/dashboard");
 }
 
 export async function markCleaningStartedAction(

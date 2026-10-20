@@ -1,13 +1,8 @@
 import { getHousekeepingAccess } from "@/lib/auth/housekeeping-access";
 import { getCurrentBusinessDate } from "@/lib/dates/business-date";
 import { getCurrentTimeString } from "@/lib/dates/time";
-import {
-  computeHousekeepingStats,
-  mapRoomToHousekeepingTask,
-} from "@/lib/housekeeping/mapper";
-import { resolveDepartureClassification } from "@/lib/reservations/departure-classification";
-import { resolveFloorLabel } from "@/lib/rooms/mapper";
-import { mapDbReservationToReservation } from "@/lib/reservations/mapper";
+import { assembleHousekeepingBoard } from "@/lib/housekeeping/assemble-board";
+import { mapRoomToHousekeepingTask } from "@/lib/housekeeping/mapper";
 import { loadCheckoutPolicy } from "@/lib/settings/checkout-policy";
 import type { IActivityLogRepository } from "@/repositories/activity-log.repository";
 import type { IHousekeepingRepository } from "@/repositories/housekeeping.repository";
@@ -19,8 +14,14 @@ import { ServiceError } from "@/services/types";
 import type { ServiceContext } from "@/services/types";
 import { ActivityActionCodes } from "@/types/database/enums";
 import { notifyHousekeepingAlert } from "@/lib/notifications/operational-notifications";
-import type { DbRoomStatus } from "@/types/database";
+import type { DbHousekeepingTask, DbRoomStatus, DbRoomWithType } from "@/types/database";
 import type { HousekeepingStats, HousekeepingTask } from "@/types/housekeeping";
+
+const BOARD_ROOM_STATUSES: DbRoomStatus[] = [
+  "cleaning",
+  "available",
+  "maintenance",
+];
 
 export interface IHousekeepingService {
   listTasks(
@@ -113,34 +114,35 @@ export class HousekeepingService implements IHousekeepingService {
   }
 
   private async getLastCheckout(roomId: string) {
-    const reservations = await this.reservations.getByRoomId(roomId);
-    const checkedOut = reservations
-      .filter((r) => r.status === "checked_out" || r.checked_out_at)
-      .sort((a, b) => {
-        const aTime = a.checked_out_at ?? a.updated_at;
-        const bTime = b.checked_out_at ?? b.updated_at;
-        return bTime.localeCompare(aTime);
-      })[0];
-
-    if (!checkedOut) return { guestName: null, checkoutAt: null };
+    const [checkout] = await this.reservations.listLatestCheckoutsForHousekeeping([
+      roomId,
+    ]);
+    if (!checkout) return { guestName: null, checkoutAt: null };
     return {
-      guestName: checkedOut.guest.full_name,
-      checkoutAt: checkedOut.checked_out_at,
+      guestName: checkout.guestName,
+      checkoutAt: checkout.checkoutAt,
     };
   }
 
-  private async buildTaskForRoom(roomId: string): Promise<HousekeepingTask> {
-    const room = await this.resolveRoom(roomId);
-    const task = await this.housekeeping.findByRoomId(roomId);
-    const checkout = await this.getLastCheckout(roomId);
+  private mapTaskFromKnownState(
+    room: DbRoomWithType,
+    roomStatus: DbRoomStatus,
+    task: DbHousekeepingTask | null,
+    lastGuestName?: string | null,
+    lastCheckoutAt?: string | null
+  ): HousekeepingTask {
     const mapped = mapRoomToHousekeepingTask(
-      room,
+      { ...room, status: roomStatus },
       task,
-      checkout.guestName,
-      checkout.checkoutAt
+      lastGuestName,
+      lastCheckoutAt
     );
     if (!mapped) {
-      throw new ServiceError("Room is not on the housekeeping board.", "VALIDATION", 400);
+      throw new ServiceError(
+        "Room is not on the housekeeping board.",
+        "VALIDATION",
+        400
+      );
     }
     return mapped;
   }
@@ -178,22 +180,22 @@ export class HousekeepingService implements IHousekeepingService {
   private async changeRoomStatus(
     ctx: ServiceContext,
     session: AuthSession,
-    roomId: string,
+    room: DbRoomWithType,
     next: DbRoomStatus,
     actionCode: string,
     action: string
-  ): Promise<void> {
-    const room = await this.resolveRoom(roomId);
+  ): Promise<DbRoomWithType> {
     const previous = room.status;
-    if (previous === next) return;
+    if (previous === next) return room;
 
-    await this.rooms.changeStatus(roomId, next);
+    await this.rooms.changeStatus(room.id, next);
     await this.log(ctx, session, {
       action: `${action} — Room ${room.room_number}`,
       actionCode,
-      roomId,
+      roomId: room.id,
       metadata: { previous_status: previous, new_status: next },
     });
+    return { ...room, status: next };
   }
 
   async listTasks(
@@ -206,85 +208,36 @@ export class HousekeepingService implements IHousekeepingService {
   }> {
     this.requireView(session);
 
-    const [rooms, businessDate, policy, allReservations] = await Promise.all([
+    const [rooms, businessDate, policy, checkedInRows] = await Promise.all([
       this.rooms.getAll(false),
       getCurrentBusinessDate(),
       loadCheckoutPolicy(),
-      this.reservations.getAll(),
+      this.reservations.listCheckedInForHousekeeping(),
     ]);
     const currentTime = getCurrentTimeString();
 
-    const boardRooms = rooms.filter((room) =>
-      ["cleaning", "available", "maintenance"].includes(room.status)
-    );
+    const boardRooms = rooms
+      .filter((room) => BOARD_ROOM_STATUSES.includes(room.status))
+      .slice()
+      .sort((a, b) => a.room_number.localeCompare(b.room_number));
 
-    const tasks: HousekeepingTask[] = [];
-    for (const room of boardRooms) {
-      const hkTask = await this.housekeeping.findByRoomId(room.id);
-      const checkout = await this.getLastCheckout(room.id);
-      const mapped = mapRoomToHousekeepingTask(
-        room,
-        hkTask,
-        checkout.guestName,
-        checkout.checkoutAt
-      );
-      if (mapped) tasks.push(mapped);
-    }
+    const boardRoomIds = boardRooms.map((room) => room.id);
 
-    const checkedIn = allReservations
-      .map(mapDbReservationToReservation)
-      .filter((r) => r.status === "checked_in");
+    const [hkTasks, checkouts] = await Promise.all([
+      this.housekeeping.findLatestByRoomIds(boardRoomIds),
+      this.reservations.listLatestCheckoutsForHousekeeping(boardRoomIds),
+    ]);
 
-    const departureWatch: HousekeepingTask[] = [];
-    for (const reservation of checkedIn) {
-      const resolved = resolveDepartureClassification({
-        status: reservation.status,
-        checkInDate: reservation.checkInDate,
-        scheduledCheckOutDate: reservation.checkOutDate,
-        businessDate,
-        currentTime,
-        policyCheckOutTime: policy.checkOutTime,
-      });
-      if (
-        resolved.classification !== "expected_departure" &&
-        resolved.classification !== "late_checkout" &&
-        resolved.classification !== "overstay"
-      ) {
-        continue;
-      }
-
-      const room = rooms.find((r) => r.room_number === reservation.roomNumber);
-      if (!room) continue;
-
-      const hkLabel =
-        resolved.classification === "overstay"
-          ? "Overstay — cannot clean until checkout"
-          : resolved.classification === "late_checkout"
-            ? "Late checkout"
-            : "Room waiting for checkout";
-
-      departureWatch.push({
-        id: `departure_${reservation.id}`,
-        roomId: room.id,
-        roomNumber: room.room_number,
-        roomTypeName: room.room_type.name,
-        floorLabel: resolveFloorLabel(room),
-        status: "pending_cleaning",
-        assignedStaff: "Front desk",
-        notes: hkLabel,
-        lastGuest: reservation.guestName,
-        lastCheckoutTime: "—",
-        expectedCompletion: "—",
-        departureLabel: hkLabel,
-        departureClassification: resolved.classification,
-      });
-    }
-
-    return {
-      tasks,
-      stats: computeHousekeepingStats(tasks),
-      departureWatch,
-    };
+    return assembleHousekeepingBoard({
+      rooms,
+      boardRooms,
+      housekeepingTasks: hkTasks,
+      checkouts,
+      checkedIn: checkedInRows,
+      businessDate,
+      currentTime,
+      policy,
+    });
   }
 
   async markCleaningStarted(
@@ -304,7 +257,7 @@ export class HousekeepingService implements IHousekeepingService {
       lastCheckoutAt: checkout.checkoutAt,
     });
 
-    await this.housekeeping.updateStatus(task.id, "cleaning", {
+    const updatedTask = await this.housekeeping.updateStatus(task.id, "cleaning", {
       started_at: new Date().toISOString(),
       assigned_staff_id: ctx.userId,
     });
@@ -325,31 +278,39 @@ export class HousekeepingService implements IHousekeepingService {
       });
     }
 
-    return this.buildTaskForRoom(roomId);
+    return this.mapTaskFromKnownState(
+      room,
+      room.status,
+      updatedTask,
+      checkout.guestName,
+      checkout.checkoutAt
+    );
   }
 
   async markCleaningCompleted(
     ctx: ServiceContext,
     session: AuthSession,
-    roomId: string
+    roomId: string,
+    knownRoom?: DbRoomWithType
   ): Promise<HousekeepingTask> {
     this.requireManage(session);
-    const room = await this.resolveRoom(roomId);
+    const room = knownRoom ?? (await this.resolveRoom(roomId));
     if (room.status !== "cleaning") {
       throw new ServiceError("Room is not being cleaned.", "VALIDATION", 400);
     }
 
     const task = await this.housekeeping.findByRoomId(roomId);
+    let updatedTask = task;
     if (task) {
-      await this.housekeeping.updateStatus(task.id, "ready", {
+      updatedTask = await this.housekeeping.updateStatus(task.id, "ready", {
         completed_at: new Date().toISOString(),
       });
     }
 
-    await this.changeRoomStatus(
+    const nextRoom = await this.changeRoomStatus(
       ctx,
       session,
-      roomId,
+      room,
       "available",
       ActivityActionCodes.ROOM_CLEANING_COMPLETED,
       "Cleaning completed"
@@ -365,7 +326,13 @@ export class HousekeepingService implements IHousekeepingService {
       });
     }
 
-    return this.buildTaskForRoom(roomId);
+    return this.mapTaskFromKnownState(
+      nextRoom,
+      nextRoom.status,
+      updatedTask ?? null,
+      updatedTask?.last_guest_name ?? task?.last_guest_name ?? null,
+      updatedTask?.last_checkout_at ?? task?.last_checkout_at ?? null
+    );
   }
 
   async markRoomReady(
@@ -377,21 +344,22 @@ export class HousekeepingService implements IHousekeepingService {
     const room = await this.resolveRoom(roomId);
 
     if (room.status === "cleaning") {
-      return this.markCleaningCompleted(ctx, session, roomId);
+      return this.markCleaningCompleted(ctx, session, roomId, room);
     }
 
     if (room.status === "maintenance") {
       const task = await this.housekeeping.findByRoomId(roomId);
+      let updatedTask = task;
       if (task) {
-        await this.housekeeping.updateStatus(task.id, "ready", {
+        updatedTask = await this.housekeeping.updateStatus(task.id, "ready", {
           completed_at: new Date().toISOString(),
         });
       }
 
-      await this.changeRoomStatus(
+      const nextRoom = await this.changeRoomStatus(
         ctx,
         session,
-        roomId,
+        room,
         "available",
         ActivityActionCodes.ROOM_READY,
         "Room ready"
@@ -407,7 +375,13 @@ export class HousekeepingService implements IHousekeepingService {
         });
       }
 
-      return this.buildTaskForRoom(roomId);
+      return this.mapTaskFromKnownState(
+        nextRoom,
+        nextRoom.status,
+        updatedTask ?? null,
+        updatedTask?.last_guest_name ?? task?.last_guest_name ?? null,
+        updatedTask?.last_checkout_at ?? task?.last_checkout_at ?? null
+      );
     }
 
     throw new ServiceError(
@@ -433,18 +407,19 @@ export class HousekeepingService implements IHousekeepingService {
     }
 
     await this.ensureTask(roomId, "maintenance");
-    await this.changeRoomStatus(
+    const nextRoom = await this.changeRoomStatus(
       ctx,
       session,
-      roomId,
+      room,
       "maintenance",
       ActivityActionCodes.ROOM_MAINTENANCE,
       "Marked maintenance"
     );
 
     const task = await this.housekeeping.findByRoomId(roomId);
+    let updatedTask = task;
     if (task) {
-      await this.housekeeping.updateStatus(task.id, "maintenance", {
+      updatedTask = await this.housekeeping.updateStatus(task.id, "maintenance", {
         notes: "Awaiting maintenance review",
       });
     }
@@ -459,6 +434,12 @@ export class HousekeepingService implements IHousekeepingService {
       });
     }
 
-    return this.buildTaskForRoom(roomId);
+    return this.mapTaskFromKnownState(
+      nextRoom,
+      nextRoom.status,
+      updatedTask ?? null,
+      updatedTask?.last_guest_name ?? task?.last_guest_name ?? null,
+      updatedTask?.last_checkout_at ?? task?.last_checkout_at ?? null
+    );
   }
 }

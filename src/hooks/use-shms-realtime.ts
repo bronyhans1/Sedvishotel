@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
+import { noteRealtimeRefreshAttempt } from "@/hooks/shms-refresh-coalesce";
 import { SHMS_MUTATION_EVENT } from "@/hooks/use-live-refresh";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -51,11 +52,18 @@ export function useSHMSRealtime({ stage = 1, enabled = true }: Options = {}) {
     const tables = STAGE_TABLES[stage];
     const channel = supabase.channel(`shms-realtime-stage-${stage}`);
 
+    const runRefresh = () => {
+      window.dispatchEvent(new Event(SHMS_MUTATION_EVENT));
+      router.refresh();
+    };
+
     const scheduleRefresh = () => {
       if (debounceId !== undefined) window.clearTimeout(debounceId);
       debounceId = window.setTimeout(() => {
-        window.dispatchEvent(new Event(SHMS_MUTATION_EVENT));
-        router.refresh();
+        if (noteRealtimeRefreshAttempt(runRefresh)) {
+          return;
+        }
+        runRefresh();
       }, 400);
     };
 

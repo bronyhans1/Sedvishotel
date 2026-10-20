@@ -6,7 +6,9 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:housekeeping": "tsx --test \"src/lib/housekeeping/*.test.ts\" \"src/hooks/shms-refresh-coalesce.test.ts\" \"src/repositories/supabase/housekeeping.repository.batch.test.ts\" \"src/services/housekeeping.list-tasks.test.ts\"",
+    "test:login-transition": "tsx --test \"src/lib/auth/login-submit-state.test.ts\" \"src/lib/auth/login-transition.wiring.test.ts\""
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.11",
@@ -34,6 +36,7 @@
     "eslint": "^9",
     "eslint-config-next": "^15.5.19",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

@@ -30,8 +30,38 @@ export type ExtendStayAvailabilityResult =
   | { available: true }
   | { available: false; reason: "reservation" | "block" | "invalid_dates" };
 
+/** Lean checked-in row for housekeeping departure watch only. */
+export type HousekeepingCheckedInRow = {
+  id: string;
+  status: "checked_in";
+  checkInDate: string;
+  checkOutDate: string;
+  guestName: string;
+  roomId: string;
+  roomNumber: string;
+};
+
+/** Lean latest checkout enrichment for housekeeping board cards. */
+export type HousekeepingLatestCheckout = {
+  roomId: string;
+  guestName: string | null;
+  checkoutAt: string | null;
+};
+
 export interface IReservationRepository {
   getAll(): Promise<DbReservationWithRelations[]>;
+  /**
+   * Checked-in stays for housekeeping departure watch.
+   * Does not change getAll(). Lean select — housekeeping page only.
+   */
+  listCheckedInForHousekeeping(): Promise<HousekeepingCheckedInRow[]>;
+  /**
+   * Latest checkout (by checked_out_at / updated_at) per room for board display.
+   * Empty roomIds returns [] without querying. Does not change getAll().
+   */
+  listLatestCheckoutsForHousekeeping(
+    roomIds: string[]
+  ): Promise<HousekeepingLatestCheckout[]>;
   /**
    * One operational page for the reservations screen.
    * Does not change getAll().

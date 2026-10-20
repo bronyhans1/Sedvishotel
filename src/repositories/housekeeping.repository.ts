@@ -4,6 +4,11 @@ import type { DbHousekeepingStatus, DbHousekeepingTask } from "@/types/database"
 export interface IHousekeepingRepository {
   findById(id: string): Promise<DbHousekeepingTask | null>;
   findByRoomId(roomId: string): Promise<DbHousekeepingTask | null>;
+  /**
+   * Latest housekeeping task per room (by created_at desc).
+   * Housekeeping board path only — empty roomIds returns [] without querying.
+   */
+  findLatestByRoomIds(roomIds: string[]): Promise<DbHousekeepingTask[]>;
   findAll(status?: DbHousekeepingStatus): Promise<DbHousekeepingTask[]>;
   create(
     data: Omit<DbHousekeepingTask, "id" | "created_at" | "updated_at">

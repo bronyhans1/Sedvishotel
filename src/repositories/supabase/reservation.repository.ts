@@ -12,6 +12,8 @@ import type {
   AvailabilityQuery,
   ExtendStayAvailabilityQuery,
   ExtendStayAvailabilityResult,
+  HousekeepingCheckedInRow,
+  HousekeepingLatestCheckout,
   IReservationRepository,
 } from "@/repositories/reservation.repository";
 import type { PaginatedResult } from "@/repositories/types";
@@ -58,6 +60,25 @@ const RESERVATION_ANALYTICS_SELECT = `
   room_type:room_types!reservations_room_type_id_fkey (
     id, slug, name, default_price, capacity, description, amenities
   )
+`;
+
+/** Housekeeping departure watch — checked-in only, minimal columns. */
+const HOUSEKEEPING_CHECKED_IN_SELECT = `
+  id,
+  status,
+  check_in_date,
+  check_out_date,
+  guest:guests!reservations_guest_id_fkey!inner (full_name),
+  room:rooms!reservations_room_id_fkey!inner (id, room_number)
+`;
+
+/** Housekeeping board last-checkout enrichment — no deep room graphs. */
+const HOUSEKEEPING_CHECKOUT_SELECT = `
+  room_id,
+  status,
+  checked_out_at,
+  updated_at,
+  guest:guests!reservations_guest_id_fkey (full_name)
 `;
 
 /** Same required relations as getAll(), without the full nested trees. */
@@ -402,6 +423,89 @@ export class SupabaseReservationRepository implements IReservationRepository {
     return (data ?? [])
       .map((row) => toReservationWithRelations(row as unknown as ReservationRow))
       .filter((r): r is DbReservationWithRelations => Boolean(r));
+  }
+
+  async listCheckedInForHousekeeping(): Promise<HousekeepingCheckedInRow[]> {
+    const { data, error } = await this.client
+      .from("reservations")
+      .select(HOUSEKEEPING_CHECKED_IN_SELECT)
+      .eq("status", "checked_in")
+      .order("check_out_date", { ascending: true });
+
+    if (error) {
+      throw new Error(
+        `Failed to load checked-in stays for housekeeping: ${error.message}`
+      );
+    }
+
+    const rows: HousekeepingCheckedInRow[] = [];
+    for (const raw of data ?? []) {
+      const row = raw as unknown as {
+        id: string;
+        status: string;
+        check_in_date: string;
+        check_out_date: string;
+        guest: { full_name: string } | null;
+        room: { id: string; room_number: string } | null;
+      };
+      if (row.status !== "checked_in" || !row.guest?.full_name || !row.room?.id) {
+        continue;
+      }
+      rows.push({
+        id: row.id,
+        status: "checked_in",
+        checkInDate: row.check_in_date,
+        checkOutDate: row.check_out_date,
+        guestName: row.guest.full_name,
+        roomId: row.room.id,
+        roomNumber: row.room.room_number,
+      });
+    }
+    return rows;
+  }
+
+  async listLatestCheckoutsForHousekeeping(
+    roomIds: string[]
+  ): Promise<HousekeepingLatestCheckout[]> {
+    if (roomIds.length === 0) return [];
+
+    const { data, error } = await this.client
+      .from("reservations")
+      .select(HOUSEKEEPING_CHECKOUT_SELECT)
+      .in("room_id", roomIds)
+      .or("status.eq.checked_out,checked_out_at.not.is.null");
+
+    if (error) {
+      throw new Error(
+        `Failed to load latest checkouts for housekeeping: ${error.message}`
+      );
+    }
+
+    type CheckoutRow = {
+      room_id: string;
+      status: string;
+      checked_out_at: string | null;
+      updated_at: string;
+      guest: { full_name: string } | null;
+    };
+
+    const latestByRoom = new Map<string, HousekeepingLatestCheckout>();
+    const ranked = ((data ?? []) as unknown as CheckoutRow[]).slice().sort((a, b) => {
+      const aTime = a.checked_out_at ?? a.updated_at;
+      const bTime = b.checked_out_at ?? b.updated_at;
+      return bTime.localeCompare(aTime);
+    });
+
+    for (const row of ranked) {
+      if (latestByRoom.has(row.room_id)) continue;
+      latestByRoom.set(row.room_id, {
+        roomId: row.room_id,
+        guestName: row.guest?.full_name ?? null,
+        checkoutAt: row.checked_out_at,
+      });
+    }
+
+    return Array.from(latestByRoom.values());
   }
 
   async checkAvailability(query: AvailabilityQuery): Promise<string[]> {

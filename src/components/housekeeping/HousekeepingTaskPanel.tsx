@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { HousekeepingAccess } from "@/lib/auth/housekeeping-access.types";
+import type { ConfirmedHousekeepingTransition } from "@/lib/housekeeping/board-local-state";
 import type { HousekeepingTask } from "@/types/housekeeping";
 
 const STATUS_LABELS: Record<HousekeepingTask["status"], string> = {
@@ -33,6 +34,10 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   access: HousekeepingAccess;
+  onConfirmedTransition?: (
+    roomId: string,
+    transition: ConfirmedHousekeepingTransition
+  ) => void;
 };
 
 export function HousekeepingTaskPanel({
@@ -40,6 +45,7 @@ export function HousekeepingTaskPanel({
   open,
   onOpenChange,
   access,
+  onConfirmedTransition,
 }: Props) {
   const toast = useToast();
   const refresh = useLiveRefresh();
@@ -50,13 +56,16 @@ export function HousekeepingTaskPanel({
 
   function runAction(
     action: (roomId: string) => Promise<{ success: boolean; error?: string }>,
+    transition: ConfirmedHousekeepingTransition,
     headline: string,
     toastMessage?: string
   ) {
     setError(null);
+    const roomId = task!.roomId;
     startTransition(async () => {
-      const result = await action(task!.roomId);
+      const result = await action(roomId);
       if (result.success) {
+        onConfirmedTransition?.(roomId, transition);
         onOpenChange(false);
         toast.celebrate(headline, toastMessage ?? headline);
         refresh();
@@ -125,6 +134,7 @@ export function HousekeepingTaskPanel({
                   onClick={() =>
                     runAction(
                       markCleaningStartedAction,
+                      "cleaning_started",
                       "Cleaning Started",
                       `Room ${task.roomNumber} cleaning started.`
                     )
@@ -141,6 +151,7 @@ export function HousekeepingTaskPanel({
                     onClick={() =>
                       runAction(
                         markCleaningCompletedAction,
+                        "cleaning_completed",
                         "Cleaning Complete",
                         `Room ${task.roomNumber} cleaning completed.`
                       )
@@ -155,6 +166,7 @@ export function HousekeepingTaskPanel({
                     onClick={() =>
                       runAction(
                         markRoomReadyAction,
+                        "room_ready",
                         "Room Ready",
                         `Room ${task.roomNumber} is ready.`
                       )
@@ -172,6 +184,7 @@ export function HousekeepingTaskPanel({
                   onClick={() =>
                     runAction(
                       markMaintenanceAction,
+                      "maintenance",
                       "Maintenance Set",
                       `Room ${task.roomNumber} marked for maintenance.`
                     )
@@ -187,6 +200,7 @@ export function HousekeepingTaskPanel({
                   onClick={() =>
                     runAction(
                       markRoomReadyAction,
+                      "room_ready",
                       "Room Ready",
                       `Room ${task.roomNumber} is ready.`
                     )

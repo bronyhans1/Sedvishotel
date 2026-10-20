@@ -1,4 +1,6 @@
-import { getAuthService } from "@/lib/auth/get-auth";
+import { cache } from "react";
+
+import { getCachedAuthSession } from "@/lib/auth/cached-session";
 import type { CurrentUser } from "@/lib/auth/current-user.types";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -6,15 +8,15 @@ export type { CurrentUser } from "@/lib/auth/current-user.types";
 
 /**
  * Server-only: loads the signed-in staff user from Supabase (public.users + staff_profiles).
+ * Request-scoped via React cache — safe to call from layout + nested loaders.
  * Do not import this module from Client Components — use current-user.types.ts for props.
  */
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   if (!isSupabaseConfigured()) {
     return null;
   }
 
-  const auth = await getAuthService();
-  const session = await auth.getSession();
+  const session = await getCachedAuthSession();
   if (!session) {
     return null;
   }
@@ -30,4 +32,4 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     permissions: session.permissions,
     avatarUrl: session.avatarUrl ?? null,
   };
-}
+});

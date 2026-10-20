@@ -1,13 +1,12 @@
 import { redirect } from "next/navigation";
 
-import { getAuthService } from "@/lib/auth/get-auth";
+import { getCachedAuthSession } from "@/lib/auth/cached-session";
 import { ServiceError } from "@/services/types";
 import type { ServiceContext } from "@/services/types";
 import type { AuthSession } from "@/services/auth.service";
 
 export async function getAuthenticatedSession(): Promise<AuthSession> {
-  const auth = await getAuthService();
-  const session = await auth.getSession();
+  const session = await getCachedAuthSession();
   if (!session) {
     throw new ServiceError("Unauthorized", "UNAUTHORIZED", 401);
   }
@@ -19,8 +18,7 @@ export async function getServiceContextForPage(): Promise<{
   session: AuthSession;
   ctx: ServiceContext;
 }> {
-  const auth = await getAuthService();
-  const session = await auth.getSession();
+  const session = await getCachedAuthSession();
   if (!session) {
     redirect("/login");
   }
