@@ -3,6 +3,7 @@ import { Suspense } from "react";
 
 import { BookPageContent } from "@/features/public/components/BookPageContent";
 import { publicMetadata } from "@/config/public-site";
+import { loadPublicPriceVisibility } from "@/lib/public/load-public-price-visibility";
 import { loadPublicRooms } from "@/lib/public/load-public-rooms";
 import { loadTaxAndChargeSettings } from "@/lib/settings/pricing-settings";
 import { buildPublicMetadata } from "@/lib/public-seo";
@@ -14,9 +15,10 @@ export const metadata: Metadata = buildPublicMetadata({
 });
 
 export default async function BookPage() {
-  const [pricingSettings, catalogRooms] = await Promise.all([
+  const [pricingSettings, catalogRooms, showPrices] = await Promise.all([
     loadTaxAndChargeSettings(),
     loadPublicRooms(),
+    loadPublicPriceVisibility(),
   ]);
 
   return (
@@ -27,7 +29,11 @@ export default async function BookPage() {
         </div>
       }
     >
-      <BookPageContent pricingSettings={pricingSettings} catalogRooms={catalogRooms} />
+      <BookPageContent
+        pricingSettings={pricingSettings}
+        catalogRooms={catalogRooms}
+        showPrices={showPrices}
+      />
     </Suspense>
   );
 }

@@ -13,6 +13,7 @@ import { TrustSection } from "@/components/public/TrustSection";
 import { WhyChooseUs } from "@/components/public/WhyChooseUs";
 import { Button } from "@/components/ui/button";
 import { homepageFeaturedSlots } from "@/lib/public/homepage-images";
+import { loadPublicPriceVisibility } from "@/lib/public/load-public-price-visibility";
 import { loadPublicRooms } from "@/lib/public/load-public-rooms";
 import { buildPublicMetadata } from "@/lib/public-seo";
 
@@ -31,7 +32,10 @@ export const metadata: Metadata = buildPublicMetadata({
 });
 
 export default async function HomePage() {
-  const publicRooms = await loadPublicRooms();
+  const [publicRooms, showPrices] = await Promise.all([
+    loadPublicRooms(),
+    loadPublicPriceVisibility(),
+  ]);
   const roomsBySlug = Object.fromEntries(
     publicRooms.map((room) => [room.slug, room])
   );
@@ -83,6 +87,7 @@ export default async function HomePage() {
                     room={room}
                     imageSrc={slot.src}
                     highlight={Boolean(slot.highlight)}
+                    showPrices={showPrices}
                   />
                 </ScrollReveal>
               );

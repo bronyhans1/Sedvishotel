@@ -43,6 +43,8 @@ export type HotelSettings = {
   receiptHeaderMessage: string;
   receiptFooterMessage: string;
   showHotelLogo: boolean;
+  /** When false, public website hides room prices and monetary estimates (presentation only). */
+  showPublicWebsitePrices: boolean;
   showQrCode: boolean;
   printThankYouMessage: boolean;
   invoiceFooter: string;

@@ -8,6 +8,7 @@ import {
   getRelatedRooms,
   loadPublicRooms,
 } from "@/lib/public/load-public-rooms";
+import { loadPublicPriceVisibility } from "@/lib/public/load-public-price-visibility";
 import {
   getRoomsPageGallery,
   parseRoomsPageGalleryId,
@@ -36,7 +37,10 @@ export default async function RoomDetailPage({ params, searchParams }: Props) {
   const query = await searchParams;
   const galleryId = parseRoomsPageGalleryId(query[ROOMS_PAGE_GALLERY_QUERY]);
 
-  const rooms = await loadPublicRooms();
+  const [rooms, showPrices] = await Promise.all([
+    loadPublicRooms(),
+    loadPublicPriceVisibility(),
+  ]);
   const room = getPublicRoomBySlug(rooms, slug);
   if (!room) notFound();
 
@@ -57,6 +61,7 @@ export default async function RoomDetailPage({ params, searchParams }: Props) {
         room={roomForDisplay}
         related={getRelatedRooms(rooms, slug)}
         catalogRooms={rooms}
+        showPrices={showPrices}
       />
     </>
   );

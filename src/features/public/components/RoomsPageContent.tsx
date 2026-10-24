@@ -20,6 +20,7 @@ const selectClass =
 
 type RoomsPageContentProps = {
   publicRooms: PublicRoom[];
+  showPrices?: boolean;
 };
 
 type CatalogCard = {
@@ -61,7 +62,10 @@ function buildCatalogCards(rooms: PublicRoom[]): CatalogCard[] {
   return cards;
 }
 
-export function RoomsPageContent({ publicRooms }: RoomsPageContentProps) {
+export function RoomsPageContent({
+  publicRooms,
+  showPrices = true,
+}: RoomsPageContentProps) {
   const [search, setSearch] = useState("");
   const [type, setType] = useState("all");
   const [priceMax, setPriceMax] = useState("all");
@@ -83,13 +87,17 @@ export function RoomsPageContent({ publicRooms }: RoomsPageContentProps) {
         return false;
       }
       if (type !== "all" && room.categoryId !== type) return false;
-      if (priceMax !== "all" && room.pricePerNight > Number(priceMax)) {
+      if (
+        showPrices &&
+        priceMax !== "all" &&
+        room.pricePerNight > Number(priceMax)
+      ) {
         return false;
       }
       if (capacity !== "all" && room.capacity < Number(capacity)) return false;
       return true;
     });
-  }, [search, type, priceMax, capacity, catalogCards]);
+  }, [search, type, priceMax, capacity, catalogCards, showPrices]);
 
   const uniqueTypes = useMemo(() => {
     const seen = new Set<string>();
@@ -132,18 +140,20 @@ export function RoomsPageContent({ publicRooms }: RoomsPageContentProps) {
                 </option>
               ))}
             </select>
-            <select
-              className={selectClass}
-              value={priceMax}
-              onChange={(e) => setPriceMax(e.target.value)}
-              aria-label="Price range"
-            >
-              <option value="all">Any Price</option>
-              <option value="300">Up to GH₵300</option>
-              <option value="500">Up to GH₵500</option>
-              <option value="700">Up to GH₵700</option>
-              <option value="1000">Up to GH₵1,000</option>
-            </select>
+            {showPrices ? (
+              <select
+                className={selectClass}
+                value={priceMax}
+                onChange={(e) => setPriceMax(e.target.value)}
+                aria-label="Price range"
+              >
+                <option value="all">Any Price</option>
+                <option value="300">Up to GH₵300</option>
+                <option value="500">Up to GH₵500</option>
+                <option value="700">Up to GH₵700</option>
+                <option value="1000">Up to GH₵1,000</option>
+              </select>
+            ) : null}
             <select
               className={selectClass}
               value={capacity}
@@ -162,7 +172,12 @@ export function RoomsPageContent({ publicRooms }: RoomsPageContentProps) {
           </p>
           <div className="mt-10 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map(({ key, room, galleryId }) => (
-              <PublicRoomCard key={key} room={room} galleryId={galleryId} />
+              <PublicRoomCard
+                key={key}
+                room={room}
+                galleryId={galleryId}
+                showPrices={showPrices}
+              />
             ))}
           </div>
           {filtered.length === 0 && (

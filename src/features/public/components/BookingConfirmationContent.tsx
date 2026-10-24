@@ -12,7 +12,11 @@ import type { BookingConfirmation } from "@/types/public";
 
 const WHATSAPP_HREF = `https://wa.me/${hotelContact.phoneTel.replace(/\D/g, "")}`;
 
-export function BookingConfirmationContent() {
+type Props = {
+  showPrices?: boolean;
+};
+
+export function BookingConfirmationContent({ showPrices = true }: Props) {
   const [booking, setBooking] = useState<BookingConfirmation | null>(null);
   const [ready, setReady] = useState(false);
 
@@ -101,12 +105,14 @@ export function BookingConfirmationContent() {
                 {booking.checkIn} → {booking.checkOut}
               </dd>
             </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">Estimated Total</dt>
-              <dd className="font-serif text-xl font-bold text-brand-navy">
-                {formatCurrency(booking.total)}
-              </dd>
-            </div>
+            {showPrices ? (
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted-foreground">Estimated Total</dt>
+                <dd className="font-serif text-xl font-bold text-brand-navy">
+                  {formatCurrency(booking.total)}
+                </dd>
+              </div>
+            ) : null}
             <div className="flex justify-between gap-4 rounded-xl bg-amber-500/10 px-3 py-3">
               <dt className="text-amber-900 dark:text-amber-100">Reservation Status</dt>
               <dd className="font-semibold text-amber-800 dark:text-amber-100">

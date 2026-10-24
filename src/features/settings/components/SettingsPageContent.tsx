@@ -730,6 +730,19 @@ export function SettingsPageContent({
             <ToggleRow label="Housekeeping Alerts" checked={settings.housekeepingAlerts} onChange={(v) => set("housekeepingAlerts", v)} />
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Public Website</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-1">
+            <ToggleRow
+              label="Show prices on public website"
+              checked={settings.showPublicWebsitePrices}
+              onChange={(v) => set("showPublicWebsitePrices", v)}
+            />
+          </CardContent>
+        </Card>
       </fieldset>
     </PageContainer>
   );

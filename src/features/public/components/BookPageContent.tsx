@@ -49,6 +49,7 @@ import type {
 type BookPageContentProps = {
   pricingSettings: PublicBookingPricingSettings;
   catalogRooms: PublicRoom[];
+  showPrices?: boolean;
 };
 
 type BookingSurface = "landing" | "empty" | "journey";
@@ -120,7 +121,11 @@ function RoomCardSkeleton() {
   );
 }
 
-export function BookPageContent({ pricingSettings, catalogRooms }: BookPageContentProps) {
+export function BookPageContent({
+  pricingSettings,
+  catalogRooms,
+  showPrices = true,
+}: BookPageContentProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const guestHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -520,12 +525,14 @@ export function BookPageContent({ pricingSettings, catalogRooms }: BookPageConte
                               ) : null}
                             </div>
 
-                            <p className="font-serif text-2xl font-bold text-brand-navy">
-                              {formatCurrency(room.pricePerNight)}
-                              <span className="ml-1 font-sans text-sm font-medium text-muted-foreground">
-                                / night
-                              </span>
-                            </p>
+                            {showPrices ? (
+                              <p className="font-serif text-2xl font-bold text-brand-navy">
+                                {formatCurrency(room.pricePerNight)}
+                                <span className="ml-1 font-sans text-sm font-medium text-muted-foreground">
+                                  / night
+                                </span>
+                              </p>
+                            ) : null}
 
                             <ul
                               className="flex flex-wrap gap-1.5"
@@ -542,8 +549,9 @@ export function BookPageContent({ pricingSettings, catalogRooms }: BookPageConte
                             </ul>
 
                             <p className="text-xs leading-relaxed text-muted-foreground">
-                              Estimated stay total {formatCurrency(p.total)} for{" "}
-                              {p.nights} night{p.nights > 1 ? "s" : ""}.{" "}
+                              {showPrices
+                                ? `Estimated stay total ${formatCurrency(p.total)} for ${p.nights} night${p.nights > 1 ? "s" : ""}. `
+                                : `Stay for ${p.nights} night${p.nights > 1 ? "s" : ""}. `}
                               {hotelPolicies.cancellation}
                             </p>
 
@@ -592,6 +600,7 @@ export function BookPageContent({ pricingSettings, catalogRooms }: BookPageConte
                   search={search}
                   pricingSettings={pricingSettings}
                   compact
+                  showPrices={showPrices}
                   className="lg:sticky lg:top-28"
                 />
               ) : null}
@@ -682,6 +691,7 @@ export function BookPageContent({ pricingSettings, catalogRooms }: BookPageConte
                 search={search}
                 pricingSettings={pricingSettings}
                 guestName={guest.fullName}
+                showPrices={showPrices}
                 className="lg:sticky lg:top-28"
               />
             </div>
@@ -791,6 +801,7 @@ export function BookPageContent({ pricingSettings, catalogRooms }: BookPageConte
                 pricingSettings={pricingSettings}
                 guestName={guest.fullName}
                 extrasSummary={extrasSummary}
+                showPrices={showPrices}
                 className="lg:sticky lg:top-28"
               />
             </div>
@@ -867,9 +878,11 @@ export function BookPageContent({ pricingSettings, catalogRooms }: BookPageConte
                           Room Details
                         </h3>
                         <p className="mt-3 font-medium">{selected.name}</p>
-                        <p className="text-muted-foreground">
-                          {formatCurrency(selected.pricePerNight)} / night
-                        </p>
+                        {showPrices ? (
+                          <p className="text-muted-foreground">
+                            {formatCurrency(selected.pricePerNight)} / night
+                          </p>
+                        ) : null}
                       </section>
 
                       <section className="rounded-2xl border bg-muted/20 p-5">
@@ -956,38 +969,48 @@ export function BookPageContent({ pricingSettings, catalogRooms }: BookPageConte
                     Reservation Estimate
                   </p>
                   <dl className="mt-5 space-y-3 text-sm">
-                    <div className="flex justify-between gap-4">
-                      <dt className="text-white/70">Room Rate</dt>
-                      <dd>{formatCurrency(selected.pricePerNight)} / night</dd>
-                    </div>
+                    {showPrices ? (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-white/70">Room Rate</dt>
+                        <dd>{formatCurrency(selected.pricePerNight)} / night</dd>
+                      </div>
+                    ) : null}
                     <div className="flex justify-between gap-4">
                       <dt className="text-white/70">Number of Nights</dt>
                       <dd>{reviewPricing.nights}</dd>
                     </div>
-                    <div className="flex justify-between gap-4">
-                      <dt className="text-white/70">Subtotal</dt>
-                      <dd>{formatCurrency(reviewPricing.subtotal)}</dd>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <dt className="text-white/70">
-                        Taxes ({reviewPricing.taxLabel}%)
-                      </dt>
-                      <dd>{formatCurrency(reviewPricing.taxes)}</dd>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <dt className="text-white/70">
-                        Service Charge ({reviewPricing.serviceLabel}%)
-                      </dt>
-                      <dd>{formatCurrency(reviewPricing.service)}</dd>
-                    </div>
+                    {showPrices ? (
+                      <>
+                        <div className="flex justify-between gap-4">
+                          <dt className="text-white/70">Subtotal</dt>
+                          <dd>{formatCurrency(reviewPricing.subtotal)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <dt className="text-white/70">
+                            Taxes ({reviewPricing.taxLabel}%)
+                          </dt>
+                          <dd>{formatCurrency(reviewPricing.taxes)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <dt className="text-white/70">
+                            Service Charge ({reviewPricing.serviceLabel}%)
+                          </dt>
+                          <dd>{formatCurrency(reviewPricing.service)}</dd>
+                        </div>
+                      </>
+                    ) : null}
                   </dl>
-                  <div className="my-5 border-t border-white/15" />
-                  <div className="flex items-end justify-between gap-3">
-                    <span className="text-sm font-semibold">Estimated Total</span>
-                    <span className="font-serif text-3xl font-bold text-brand-gold">
-                      {formatCurrency(reviewPricing.total)}
-                    </span>
-                  </div>
+                  {showPrices ? (
+                    <>
+                      <div className="my-5 border-t border-white/15" />
+                      <div className="flex items-end justify-between gap-3">
+                        <span className="text-sm font-semibold">Estimated Total</span>
+                        <span className="font-serif text-3xl font-bold text-brand-gold">
+                          {formatCurrency(reviewPricing.total)}
+                        </span>
+                      </div>
+                    </>
+                  ) : null}
                   <dl className="mt-6 space-y-3 text-sm">
                     <div className="flex justify-between gap-4">
                       <dt className="text-white/70">Payment Method</dt>

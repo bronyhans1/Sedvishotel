@@ -8,9 +8,10 @@ import type { PublicRoom } from "@/types/public";
 
 type Props = {
   rooms: PublicRoom[];
+  showPrices?: boolean;
 };
 
-export function RelatedRoomsCarousel({ rooms }: Props) {
+export function RelatedRoomsCarousel({ rooms, showPrices = true }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   function scroll(dir: "left" | "right") {
@@ -27,7 +28,7 @@ export function RelatedRoomsCarousel({ rooms }: Props) {
       >
         {rooms.map((room) => (
           <div key={room.id} className="w-[min(100%,320px)] shrink-0 snap-start">
-            <PublicRoomCard room={room} compact />
+            <PublicRoomCard room={room} compact showPrices={showPrices} />
           </div>
         ))}
       </div>

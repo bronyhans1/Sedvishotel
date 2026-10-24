@@ -26,9 +26,15 @@ type Props = {
   room: PublicRoom;
   related: PublicRoom[];
   catalogRooms: PublicRoom[];
+  showPrices?: boolean;
 };
 
-export function RoomDetailContent({ room, related, catalogRooms }: Props) {
+export function RoomDetailContent({
+  room,
+  related,
+  catalogRooms,
+  showPrices = true,
+}: Props) {
   const [activeImage, setActiveImage] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
@@ -78,10 +84,12 @@ export function RoomDetailContent({ room, related, catalogRooms }: Props) {
 
             <ScrollReveal>
               <h1 className="mt-8 font-serif text-3xl font-bold sm:text-4xl">{room.name}</h1>
-              <p className="mt-2 text-2xl font-semibold text-brand-navy">
-                {formatCurrency(room.pricePerNight)}
-                <span className="text-base font-normal text-muted-foreground"> per night</span>
-              </p>
+              {showPrices ? (
+                <p className="mt-2 text-2xl font-semibold text-brand-navy">
+                  {formatCurrency(room.pricePerNight)}
+                  <span className="text-base font-normal text-muted-foreground"> per night</span>
+                </p>
+              ) : null}
               <div className="mt-4 flex items-center gap-2 text-muted-foreground">
                 <Users className="h-5 w-5" />
                 Capacity: {room.capacity} guest{room.capacity > 1 ? "s" : ""}
@@ -185,7 +193,7 @@ export function RoomDetailContent({ room, related, catalogRooms }: Props) {
             <h2 className="font-serif text-2xl font-bold">Related Rooms</h2>
             <p className="mt-2 text-muted-foreground">You may also enjoy these accommodations.</p>
             <div className="mt-8">
-              <RelatedRoomsCarousel rooms={related} />
+              <RelatedRoomsCarousel rooms={related} showPrices={showPrices} />
             </div>
           </ScrollReveal>
         )}

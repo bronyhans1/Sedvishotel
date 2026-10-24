@@ -23,12 +23,15 @@ type Props = {
    * Affects cover + View Details gallery only — booking slug unchanged.
    */
   galleryId?: RoomsPageGalleryId;
+  /** When false, omit nightly-price badge (presentation only). */
+  showPrices?: boolean;
 };
 
 export function PublicRoomCard({
   room,
   compact,
   galleryId = ROOMS_PAGE_GALLERY_PRIMARY,
+  showPrices = true,
 }: Props) {
   const cover = getRoomsPageGalleryCover(room.slug, galleryId);
   const detailsHref = getRoomsPageDetailsHref(room.slug, galleryId);
@@ -44,10 +47,12 @@ export function PublicRoomCard({
           sizes="(max-width: 768px) 100vw, 33vw"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-brand-navy/55 via-transparent to-transparent opacity-80" />
-        <div className="absolute right-3 top-3 rounded-full bg-brand-navy/90 px-3 py-1 text-sm font-semibold text-brand-gold">
-          {formatCurrency(room.pricePerNight)}
-          <span className="text-xs font-normal text-white/80"> / night</span>
-        </div>
+        {showPrices ? (
+          <div className="absolute right-3 top-3 rounded-full bg-brand-navy/90 px-3 py-1 text-sm font-semibold text-brand-gold">
+            {formatCurrency(room.pricePerNight)}
+            <span className="text-xs font-normal text-white/80"> / night</span>
+          </div>
+        ) : null}
       </div>
       <div className="p-5 sm:p-6">
         <h3 className="font-serif text-xl font-semibold">{room.name}</h3>

@@ -43,6 +43,7 @@ export const defaultHotelSettings: HotelSettings = {
   receiptHeaderMessage: "",
   receiptFooterMessage: "Thank you for choosing SEDVIS HOTEL. We look forward to welcoming you again.",
   showHotelLogo: true,
+  showPublicWebsitePrices: true,
   showQrCode: false,
   printThankYouMessage: true,
   invoiceFooter: "Thank you for choosing SEDVIS HOTEL. We look forward to welcoming you again.",

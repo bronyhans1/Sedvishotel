@@ -15,6 +15,8 @@ type Props = {
   guestName?: string;
   extrasSummary?: string[];
   compact?: boolean;
+  /** When false, omit monetary rows while keeping stay details (presentation only). */
+  showPrices?: boolean;
 };
 
 function formatRoomTypeLabel(categoryId: string): string {
@@ -52,6 +54,7 @@ export function BookingSummaryCard({
   guestName,
   extrasSummary,
   compact = false,
+  showPrices = true,
 }: Props) {
   const pricing = useMemo(
     () => calculateBookingPricing(room, search.checkIn, search.checkOut, pricingSettings),
@@ -71,9 +74,11 @@ export function BookingSummaryCard({
 
       <div className="mt-3">
         <p className="font-serif text-lg font-semibold leading-snug">{room.name}</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {formatCurrency(room.pricePerNight)} / Night
-        </p>
+        {showPrices ? (
+          <p className="mt-1 text-sm text-muted-foreground">
+            {formatCurrency(room.pricePerNight)} / Night
+          </p>
+        ) : null}
       </div>
 
       <dl className="mt-4 space-y-2.5">
@@ -89,7 +94,7 @@ export function BookingSummaryCard({
         ) : null}
       </dl>
 
-      {!compact ? (
+      {showPrices && !compact ? (
         <>
           <div className="my-4 border-t border-dashed" />
           <dl className="space-y-2.5">
@@ -108,20 +113,22 @@ export function BookingSummaryCard({
             />
           </dl>
         </>
-      ) : (
-        <div className="my-4 border-t border-dashed" />
-      )}
+      ) : null}
 
-      <div className="mt-4 rounded-xl bg-brand-navy/5 px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-semibold text-brand-navy">
-            {compact ? "Estimated Total" : "Total Amount"}
-          </span>
-          <span className="font-serif text-xl font-bold text-brand-navy">
-            {formatCurrency(pricing.total)}
-          </span>
+      {showPrices && compact ? <div className="my-4 border-t border-dashed" /> : null}
+
+      {showPrices ? (
+        <div className="mt-4 rounded-xl bg-brand-navy/5 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-brand-navy">
+              {compact ? "Estimated Total" : "Total Amount"}
+            </span>
+            <span className="font-serif text-xl font-bold text-brand-navy">
+              {formatCurrency(pricing.total)}
+            </span>
+          </div>
         </div>
-      </div>
+      ) : null}
     </aside>
   );
 }

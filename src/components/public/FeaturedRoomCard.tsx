@@ -14,6 +14,8 @@ type Props = {
   /** Center “hero” card — Deluxe featured treatment. */
   highlight?: boolean;
   compact?: boolean;
+  /** When false, omit nightly-rate badge (presentation only). */
+  showPrices?: boolean;
 };
 
 export function FeaturedRoomCard({
@@ -21,6 +23,7 @@ export function FeaturedRoomCard({
   imageSrc,
   highlight = false,
   compact,
+  showPrices = true,
 }: Props) {
   const src = imageSrc ?? room.images[0];
 
@@ -62,10 +65,12 @@ export function FeaturedRoomCard({
           >
             {room.name}
           </h3>
-          <div className="shrink-0 rounded-full bg-brand-navy/90 px-3 py-1 text-sm font-semibold text-brand-gold backdrop-blur-sm">
-            {formatCurrency(room.pricePerNight)}
-            <span className="text-xs font-normal text-white/80"> / night</span>
-          </div>
+          {showPrices ? (
+            <div className="shrink-0 rounded-full bg-brand-navy/90 px-3 py-1 text-sm font-semibold text-brand-gold backdrop-blur-sm">
+              {formatCurrency(room.pricePerNight)}
+              <span className="text-xs font-normal text-white/80"> / night</span>
+            </div>
+          ) : null}
         </div>
       </div>
 
